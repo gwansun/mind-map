@@ -1,0 +1,26 @@
+# Dependencies
+/node_modules
+
+# Build output
+/dist
+/out-tsc
+
+# IDE
+/.idea
+/.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Angular cache
+/.angular
+
+# Test output
+/coverage
+
+# Misc
+*.log
+npm-debug.log*

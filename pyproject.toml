@@ -1,0 +1,56 @@
+[tool.poetry]
+name = "mind-map"
+version = "0.1.0"
+description = "Knowledge Graph-based Mind Map with LangGraph orchestration"
+authors = ["Mind Map Team"]
+readme = "README.md"
+packages = [{include = "mind_map", from = "src"}]
+
+[tool.poetry.scripts]
+mind-map = "mind_map.cli.main:app"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+langgraph = "^0.2"
+langchain = "^0.3"
+langchain-ollama = "^0.2"
+chromadb = "^0.5"
+typer = {extras = ["all"], version = "^0.15"}
+ollama = "^0.3"
+rich = "^13"
+pydantic = "^2"
+fastapi = "^0.115"
+uvicorn = {extras = ["standard"], version = "^0.32"}
+pyyaml = "^6"
+python-dotenv = "^1"
+langchain-openai = "^0.3"
+langchain-anthropic = "^0.3"
+langchain-google-genai = "^2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8"
+ruff = "^0.8"
+mypy = "^1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["chromadb.*", "ollama.*", "langgraph.*", "langchain.*", "langchain_ollama.*", "langchain_openai.*", "langchain_anthropic.*", "langchain_google_genai.*"]
+ignore_missing_imports = true
