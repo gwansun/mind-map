@@ -1,9 +1,12 @@
 """Processing LLM (LLM-B) management for filtering, extraction, and summarization.
 
-This module handles Ollama setup, installation, and model management for processing tasks.
-Provides flexible model selection with user configuration options.
+This module handles processing LLM setup with multi-provider support.
+Cloud APIs (Gemini, Anthropic, OpenAI) are preferred when available,
+with Ollama as the local fallback. Provides flexible model selection
+with user configuration options.
 """
 
+import os
 import platform
 import shutil
 import subprocess
@@ -540,51 +543,125 @@ def initialize_ollama(
     return True
 
 
-def get_processing_llm(
+def _try_cloud_processing_llm(
+    provider: str = "auto",
+    temperature: float = 0.1,
+) -> tuple[Any, str] | tuple[None, None]:
+    """Try to create a cloud-based processing LLM.
+
+    Args:
+        provider: "auto" tries all in order, or specify "gemini"/"anthropic"/"openai"
+        temperature: Temperature for generation (low for processing tasks)
+
+    Returns:
+        Tuple of (LLM instance, provider name) or (None, None) if unavailable
+    """
+    providers_to_try: list[str] = []
+    if provider == "auto":
+        providers_to_try = ["gemini", "anthropic", "openai"]
+    elif provider in ("gemini", "anthropic", "openai"):
+        providers_to_try = [provider]
+    else:
+        return None, None
+
+    for p in providers_to_try:
+        if p == "gemini":
+            api_key = os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                continue
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                gemini_llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash",
+                    google_api_key=api_key,
+                    temperature=temperature,
+                )
+                return gemini_llm, "gemini"
+            except ImportError:
+                console.print("[dim]langchain-google-genai not installed, skipping Gemini[/dim]")
+                continue
+            except Exception as e:
+                console.print(f"[dim]Gemini init failed: {e}[/dim]")
+                continue
+
+        elif p == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                continue
+            try:
+                from langchain_anthropic import ChatAnthropic
+                anthropic_llm = ChatAnthropic(
+                    model="claude-haiku-4-5-20251001",
+                    api_key=api_key,
+                    temperature=temperature,
+                )
+                return anthropic_llm, "anthropic"
+            except ImportError:
+                console.print("[dim]langchain-anthropic not installed, skipping Anthropic[/dim]")
+                continue
+            except Exception as e:
+                console.print(f"[dim]Anthropic init failed: {e}[/dim]")
+                continue
+
+        elif p == "openai":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                continue
+            try:
+                from langchain_openai import ChatOpenAI
+                openai_llm = ChatOpenAI(
+                    model="gpt-4o-mini",
+                    api_key=api_key,
+                    temperature=temperature,
+                )
+                return openai_llm, "openai"
+            except ImportError:
+                console.print("[dim]langchain-openai not installed, skipping OpenAI[/dim]")
+                continue
+            except Exception as e:
+                console.print(f"[dim]OpenAI init failed: {e}[/dim]")
+                continue
+
+    return None, None
+
+
+def _get_ollama_processing_llm(
     model_name: str | None = None,
     auto_pull: bool | None = None,
     interactive: bool = False,
+    temperature: float = 0.1,
 ) -> Any:
-    """Get LLM for processing tasks (LLM-B): filtering, extraction, summarization.
-
-    Uses only Ollama for processing tasks. Model selection is flexible:
-    - Specify model_name parameter directly
-    - Use set_processing_model() to set at runtime
-    - Configure in config.yaml under processing_llm.model
-    - Falls back to DEFAULT_PROCESSING_MODEL if none specified
+    """Get an Ollama-based processing LLM.
 
     Args:
-        model_name: Specific model to use (overrides other selections)
+        model_name: Specific Ollama model to use
         auto_pull: Whether to auto-pull model if not available (uses config if None)
         interactive: If True, prompt user for model selection if needed
+        temperature: Temperature for generation
 
     Returns:
-        LangChain LLM instance or None if setup failed
+        ChatOllama instance or None if unavailable
     """
     from .llm import load_config
 
     config = load_config()
     processing_config = config.get("processing_llm", {})
 
-    # Determine auto_pull setting
     if auto_pull is None:
         auto_pull = processing_config.get("auto_pull", False)
 
-    # Step 1: Check if Ollama is installed
     if not check_ollama_installed():
         console.print("[yellow]Ollama not installed.[/yellow]")
         console.print("[dim]Install from: https://ollama.ai/download[/dim]")
         return None
 
-    # Step 2: Check if Ollama service is running, start if not
     if not check_ollama_available():
         console.print("[yellow]Ollama service not running. Attempting to start...[/yellow]")
         if not start_ollama_service():
-            console.print("[red]Ollama service not available. Processing LLM unavailable.[/red]")
+            console.print("[red]Ollama service not available.[/red]")
             console.print("[dim]Start Ollama manually with: ollama serve[/dim]")
             return None
 
-    # Step 3: Ensure the model is available
     available_model = ensure_model_available(
         model_name,
         auto_pull=auto_pull,
@@ -596,5 +673,93 @@ def get_processing_llm(
         console.print("[dim]Set model: mind-map model set <model_name>[/dim]")
         return None
 
-    # Step 4: Get the LLM instance
     return get_ollama_llm(available_model, auto_pull=False)
+
+
+def detect_processing_provider() -> tuple[str, str]:
+    """Detect which processing provider would be used based on config + available keys.
+
+    Returns:
+        Tuple of (provider_name, model_name) for the active processing provider.
+    """
+    from .llm import load_config
+
+    config = load_config()
+    processing_config = config.get("processing_llm", {})
+    provider = processing_config.get("provider", "auto")
+
+    if provider == "ollama":
+        model = processing_config.get("model", DEFAULT_PROCESSING_MODEL)
+        return "ollama", model
+
+    # For auto or specific cloud provider, check what's available
+    if provider in ("auto", "gemini"):
+        if os.getenv("GOOGLE_API_KEY"):
+            return "gemini", "gemini-2.0-flash"
+        if provider == "gemini":
+            return "gemini", "gemini-2.0-flash"
+
+    if provider in ("auto", "anthropic"):
+        if os.getenv("ANTHROPIC_API_KEY"):
+            return "anthropic", "claude-haiku-4-5-20251001"
+        if provider == "anthropic":
+            return "anthropic", "claude-haiku-4-5-20251001"
+
+    if provider in ("auto", "openai"):
+        if os.getenv("OPENAI_API_KEY"):
+            return "openai", "gpt-4o-mini"
+        if provider == "openai":
+            return "openai", "gpt-4o-mini"
+
+    # Fallback to ollama
+    model = processing_config.get("model", DEFAULT_PROCESSING_MODEL)
+    return "ollama", model
+
+
+def get_processing_llm(
+    model_name: str | None = None,
+    auto_pull: bool | None = None,
+    interactive: bool = False,
+) -> Any:
+    """Get LLM for processing tasks (LLM-B): filtering, extraction, summarization.
+
+    Provider priority is determined by config.yaml processing_llm.provider:
+    - "auto" (default): Cloud first (Gemini → Anthropic → OpenAI) → Ollama fallback
+    - "gemini"/"anthropic"/"openai": Use specific cloud provider, fall back to Ollama
+    - "ollama": Use only Ollama (original behavior)
+
+    Args:
+        model_name: Specific Ollama model to use (only applies to Ollama provider)
+        auto_pull: Whether to auto-pull Ollama model if not available (uses config if None)
+        interactive: If True, prompt user for model selection if needed
+
+    Returns:
+        LangChain LLM instance or None if setup failed
+    """
+    from .llm import load_config
+
+    config = load_config()
+    processing_config = config.get("processing_llm", {})
+    provider = processing_config.get("provider", "auto")
+    temperature = processing_config.get("temperature", 0.1)
+
+    # If provider is not ollama-only, try cloud first
+    if provider != "ollama":
+        cloud_llm, cloud_provider = _try_cloud_processing_llm(
+            provider=provider,
+            temperature=temperature,
+        )
+        if cloud_llm:
+            console.print(f"[dim]Using {cloud_provider} for processing[/dim]")
+            return cloud_llm
+        if provider not in ("auto",):
+            # Specific cloud provider requested but unavailable — fall through to Ollama
+            console.print(f"[yellow]{provider} not available, falling back to Ollama[/yellow]")
+
+    # Ollama fallback (or provider == "ollama")
+    return _get_ollama_processing_llm(
+        model_name=model_name,
+        auto_pull=auto_pull,
+        interactive=interactive,
+        temperature=temperature,
+    )

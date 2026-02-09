@@ -8,8 +8,9 @@ importance:
   lambda_decay: 0.05
   time_unit: days
 processing_llm:
+  provider: auto          # auto | gemini | anthropic | openai | ollama
   auto_pull: false
-  model: phi3.5
+  model: phi3.5           # Ollama model (used when provider is ollama or auto-fallback)
   temperature: 0.1
 reasoning_llm:
   provider: claude-cli  # Options: claude-cli, gemini, anthropic, openai

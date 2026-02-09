@@ -88,6 +88,7 @@ def show_help() -> None:
     ask_table.add_row("QUERY", "", "Question to ask (required argument)")
     ask_table.add_row("--depth INT", "-d", "Graph traversal depth [default: 2]")
     ask_table.add_row("--data-dir PATH", "", "Directory for database storage [default: ./data]")
+    ask_table.add_row("--model TEXT", "-m", "Specific processing model to use")
     console.print(ask_table)
 
     # Stats Command Options
@@ -168,8 +169,8 @@ mind-map serve --port 3000              # Start on custom port"""
 [dim]Environment:[/dim] .env (API keys: GOOGLE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY)
 [dim]Data storage:[/dim] ./data/ (ChromaDB + SQLite)
 
-[bold]Processing LLM (B):[/bold] Ollama (local) - for extraction & summarization
-[bold]Reasoning LLM (A):[/bold] Gemini/Anthropic/OpenAI - for response generation"""
+[bold]Processing LLM (B):[/bold] Cloud APIs (Gemini/Anthropic/OpenAI) with Ollama fallback
+[bold]Reasoning LLM (A):[/bold] Claude CLI / Cloud APIs - for response generation"""
 
     console.print(config_info)
     console.print()
@@ -407,12 +408,9 @@ def memo(
     # Try to get LLM if requested
     llm = None
     if use_llm:
-        from mind_map.core.llm import get_ollama_llm, get_selected_model
-        target_model = model or get_selected_model()
-        llm = get_ollama_llm(model_name=target_model)
-        if llm:
-            console.print(f"[dim]Using LLM for processing ({target_model})[/dim]")
-        else:
+        from mind_map.core.llm import get_processing_llm
+        llm = get_processing_llm(model_name=model)
+        if not llm:
             console.print("[dim]LLM not available, using heuristic processing[/dim]")
 
     console.print("[yellow]Processing memo...[/yellow]")
@@ -435,6 +433,9 @@ def ask(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
     ] = Path("./data"),
+    model: Annotated[
+        str | None, typer.Option("--model", "-m", help="Specific processing model to use")
+    ] = None,
 ) -> None:
     """Query the knowledge graph with RAG-enhanced response."""
     from mind_map.agents.response_generator import ResponseGenerator
@@ -456,6 +457,9 @@ def ask(
     if not nodes:
         console.print(Panel("[dim]No relevant context found in knowledge graph.[/dim]"))
         return
+
+    # Enrich with relation factors and re-sort by combined score
+    nodes = store.enrich_context_nodes(nodes)
 
     console.print(f"[dim]Found {len(nodes)} relevant nodes[/dim]")
 
@@ -479,7 +483,7 @@ def ask(
 
     # --- LLM(B): interpret Q&A, extract tags/summary, persist to graph ---
     from mind_map.agents.pipeline import ingest_memo
-    from mind_map.core.llm import get_ollama_llm, get_selected_model
+    from mind_map.core.llm import get_processing_llm
     from mind_map.models.schemas import Edge
 
     # Update interaction timestamps on the context nodes that were used
@@ -487,7 +491,7 @@ def ask(
         store.update_interaction(node.id)
 
     # Get processing LLM (LLM-B); fall back to heuristic extraction if unavailable
-    processing_llm = get_ollama_llm(model_name=get_selected_model())
+    processing_llm = get_processing_llm(model_name=model)
     if processing_llm:
         console.print("[dim]Summarizing Q&A with processing LLM...[/dim]")
     else:

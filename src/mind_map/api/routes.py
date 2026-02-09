@@ -159,6 +159,10 @@ async def ask(request: AskRequest) -> AskResponse:
 
     # Step 1: Retrieve similar nodes (may be empty for new topics)
     context_nodes = store.query_similar(request.query, n_results=5)
+
+    # Enrich with relation factors and re-sort by combined score
+    context_nodes = store.enrich_context_nodes(context_nodes)
+
     context_node_ids = [node.id for node in context_nodes]
 
     # Step 2: Get reasoning LLM for response generation

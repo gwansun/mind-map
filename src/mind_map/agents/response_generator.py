@@ -67,9 +67,15 @@ class ResponseGenerator:
         for i, node in enumerate(nodes, 1):
             importance = node.metadata.importance_score
             node_type = node.metadata.type.value
-            context_parts.append(
-                f"[{i}] ({node_type}, importance: {importance:.2f})\n{node.document}"
-            )
+            relevance = node.relation_factor
+            if relevance is not None:
+                header = (
+                    f"[{i}] ({node_type}, importance: {importance:.2f},"
+                    f" relevance: {relevance:.2f})"
+                )
+            else:
+                header = f"[{i}] ({node_type}, importance: {importance:.2f})"
+            context_parts.append(f"{header}\n{node.document}")
 
         return "\n\n".join(context_parts)
 

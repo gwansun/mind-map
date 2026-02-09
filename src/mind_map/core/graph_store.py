@@ -259,6 +259,83 @@ class GraphStore:
 
         return nodes
 
+    def get_relation_factors(
+        self, anchor_id: str, candidate_ids: list[str]
+    ) -> dict[str, float]:
+        """Calculate relation factor for each candidate relative to an anchor node.
+
+        relation_factor(anchor → candidate) = edges_between(anchor, candidate) / total_edges(anchor)
+
+        Args:
+            anchor_id: The primary/anchor node ID (typically the most relevant query result)
+            candidate_ids: List of candidate node IDs to score
+
+        Returns:
+            Dict mapping candidate_id → relation_factor (0.0 to 1.0)
+        """
+        if not candidate_ids:
+            return {}
+
+        # Get total edge count for anchor
+        cursor = self.sqlite.execute(
+            "SELECT COUNT(*) FROM edges WHERE source = ? OR target = ?",
+            (anchor_id, anchor_id),
+        )
+        total_edges = cursor.fetchone()[0]
+        if total_edges == 0:
+            return {cid: 0.0 for cid in candidate_ids}
+
+        factors: dict[str, float] = {}
+        for cid in candidate_ids:
+            if cid == anchor_id:
+                factors[cid] = 1.0
+                continue
+            cursor = self.sqlite.execute(
+                """SELECT COUNT(*) FROM edges
+                   WHERE (source = ? AND target = ?)
+                      OR (source = ? AND target = ?)""",
+                (anchor_id, cid, cid, anchor_id),
+            )
+            shared = cursor.fetchone()[0]
+            factors[cid] = shared / total_edges
+
+        return factors
+
+    def enrich_context_nodes(self, nodes: list[GraphNode]) -> list[GraphNode]:
+        """Set relation_factor on each node and re-sort by combined score.
+
+        Uses the first node as the anchor (highest similarity). Combined score:
+            importance * (1 + relation_factor)
+
+        Nodes with more edges to the anchor get boosted (up to 2x).
+        Nodes with zero relation factor keep their original importance.
+
+        Args:
+            nodes: List of GraphNode objects (first node is treated as anchor)
+
+        Returns:
+            The same list with relation_factor set and re-sorted by combined score
+        """
+        if len(nodes) <= 1:
+            for n in nodes:
+                n.relation_factor = 1.0
+            return nodes
+
+        anchor = nodes[0]
+        candidate_ids = [n.id for n in nodes]
+        factors = self.get_relation_factors(anchor.id, candidate_ids)
+
+        for node in nodes:
+            node.relation_factor = factors.get(node.id, 0.0)
+
+        # Re-sort by combined score: importance * (1 + relation_factor)
+        nodes.sort(
+            key=lambda n: n.metadata.importance_score * (1 + (n.relation_factor or 0.0)),
+            reverse=True,
+        )
+
+        return nodes
+
     def calculate_importance(
         self, node_id: str, lambda_decay: float = 0.05, time_unit_days: float = 1.0
     ) -> float:

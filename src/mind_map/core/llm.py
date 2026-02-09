@@ -20,6 +20,7 @@ from .processing_llm import (
     RECOMMENDED_MODELS,
     check_ollama_available,
     check_ollama_installed,
+    detect_processing_provider,
     ensure_model_available,
     get_available_models,
     get_available_models_detailed,
@@ -81,15 +82,24 @@ def get_llm_status() -> dict[str, Any]:
         Dictionary containing status information for both LLMs.
     """
     config = load_config()
-    
-    # Check Processing LLM (LLM-B)
-    processing_model = config.get("processing_llm", {}).get("model", DEFAULT_PROCESSING_MODEL)
-    processing_available = check_ollama_available()
-    
+
+    # Check Processing LLM (LLM-B) — detect actual provider
+    proc_provider, proc_model = detect_processing_provider()
+    if proc_provider == "ollama":
+        processing_available = check_ollama_available()
+    elif proc_provider == "gemini":
+        processing_available = check_gemini_available()
+    elif proc_provider == "anthropic":
+        processing_available = check_anthropic_available()
+    elif proc_provider == "openai":
+        processing_available = check_openai_available()
+    else:
+        processing_available = False
+
     # Check Reasoning LLM (LLM-A)
     reasoning_config = config.get("reasoning_llm", {})
     reasoning_provider = reasoning_config.get("provider", "claude-cli")
-    
+
     reasoning_status = "offline"
     if reasoning_provider == "claude-cli":
         if check_claude_cli_available():
@@ -106,9 +116,9 @@ def get_llm_status() -> dict[str, Any]:
 
     return {
         "processing_llm": {
-            "model": processing_model,
+            "model": proc_model,
             "status": "online" if processing_available else "offline",
-            "provider": "ollama"
+            "provider": proc_provider,
         },
         "reasoning_llm": {
             "provider": reasoning_provider,
@@ -123,7 +133,7 @@ __all__ = [
     "get_llm_status",
     # Configuration
     "load_config",
-    # Processing LLM (LLM-B) - Ollama
+    # Processing LLM (LLM-B) - Cloud + Ollama
     "DEFAULT_PROCESSING_MODEL",
     "RECOMMENDED_MODELS",
     "check_ollama_installed",
@@ -137,6 +147,7 @@ __all__ = [
     "get_ollama_llm",
     "initialize_ollama",
     "get_processing_llm",
+    "detect_processing_provider",
     # Model selection
     "get_selected_model",
     "set_processing_model",

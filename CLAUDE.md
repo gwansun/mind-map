@@ -44,8 +44,8 @@ npm run build                         # Production build
 **Knowledge Graph approach**: Data stored as nodes (concepts/tags/entities) with edges (relationships). Retrieval traverses graph clusters rather than simple keyword matching.
 
 **LangGraph Pipeline**:
-1. `FilterAgent` (LLM-B/Ollama) → Keep/discard decision based on information gain
-2. `KnowledgeProcessor` (LLM-B/Ollama) → Extract entities, tags, relationships, summarize
+1. `FilterAgent` (LLM-B) → Keep/discard decision based on information gain
+2. `KnowledgeProcessor` (LLM-B) → Extract entities, tags, relationships, summarize
 3. `GraphStore` → Dual-write to ChromaDB (vectors) + SQLite (edges)
 4. `ResponseGenerator` (LLM-A/Claude CLI) → RAG-enhanced response synthesis
 
@@ -53,13 +53,15 @@ npm run build                         # Production build
 
 | Role | Provider | Default Model | Purpose |
 |------|----------|---------------|---------|
-| Processing (LLM-B) | Ollama only | phi3.5 | Filtering, extraction, summarization |
+| Processing (LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
 | Reasoning (LLM-A) | Claude CLI / Cloud APIs | sonnet | Response generation |
 
-- **Processing (LLM-B)**: Local Ollama models
-  - Recommended: `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`
-  - Auto-pull: disabled by default (enable in `config.yaml`)
-  - Selection: `mind-map model set <name>` or `config.yaml`
+- **Processing (LLM-B)**: Cloud-first with Ollama fallback
+  - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
+  - Cloud models: `gemini-2.0-flash`, `claude-haiku-4-5-20251001`, `gpt-4o-mini`
+  - Ollama recommended: `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`
+  - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
+  - Auto-pull (Ollama): disabled by default (enable in `config.yaml`)
 
 - **Reasoning (LLM-A)**: Claude CLI (default) with cloud fallbacks
   - Priority: Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
@@ -67,6 +69,9 @@ npm run build                         # Production build
   - Requires: `claude` CLI installed and authenticated, OR API key in `.env`
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)` - balances connectivity with time decay.
+
+**Relation Factor**: Context nodes are weighted by edge density to the most query-relevant node.
+Combined score: `importance * (1 + relation_factor)` where `relation_factor = edges_between(anchor, node) / total_edges(anchor)`.
 
 ## CLI Commands
 
@@ -110,7 +115,7 @@ npm run build                         # Production build
 
 ### Core
 - `src/mind_map/core/llm.py` - LLM facade and configuration loader
-- `src/mind_map/core/processing_llm.py` - Ollama setup and model management (LLM-B)
+- `src/mind_map/core/processing_llm.py` - Multi-provider processing LLM: Cloud APIs + Ollama (LLM-B)
 - `src/mind_map/core/reasoning_llm.py` - Multi-provider setup: Claude CLI, Gemini, Anthropic, OpenAI (LLM-A)
 - `src/mind_map/core/graph_store.py` - Hybrid ChromaDB + SQLite storage
 - `src/mind_map/core/importance.py` - Importance score calculation
@@ -136,9 +141,10 @@ npm run build                         # Production build
 ### config.yaml
 ```yaml
 processing_llm:
-  model: phi3.5           # Ollama model name
+  provider: auto          # auto | gemini | anthropic | openai | ollama
+  model: phi3.5           # Ollama model (used when provider is ollama or auto-fallback)
   temperature: 0.1
-  auto_pull: false        # Auto-download models if not available
+  auto_pull: false        # Auto-download Ollama models if not available
 
 reasoning_llm:
   provider: claude-cli    # Options: claude-cli, gemini, anthropic, openai
@@ -147,11 +153,11 @@ reasoning_llm:
   timeout: 120            # CLI timeout in seconds
 ```
 
-### .env (for fallback providers)
+### .env (for cloud providers)
 ```
-GOOGLE_API_KEY=your-key      # Gemini API (fallback)
-ANTHROPIC_API_KEY=your-key   # Claude API (fallback)
-OPENAI_API_KEY=your-key      # GPT API (fallback)
+GOOGLE_API_KEY=your-key      # Gemini API (processing + reasoning fallback)
+ANTHROPIC_API_KEY=your-key   # Claude API (processing + reasoning fallback)
+OPENAI_API_KEY=your-key      # GPT API (processing + reasoning fallback)
 # Note: Claude CLI uses your Claude Pro subscription - no API key needed
 ```
 
@@ -181,12 +187,12 @@ Text Input → FilterAgent → KnowledgeProcessor → GraphStore
 
 ### Query (ask command)
 ```
-Query → ChromaDB Search → ResponseGenerator → Response
-              ↓                   ↓                ↓
-        Similar nodes       RAG synthesis    Q&A pair → FilterAgent → KnowledgeProcessor → GraphStore
-        (incl. prior                                        ↓                  ↓                ↓
-         LLM-B summaries)                            keep/discard    tags, entities,    ChromaDB + SQLite
-                                                                     relationships      (enriches future queries)
+Query → ChromaDB Search → Enrich (relation factor) → ResponseGenerator → Response
+              ↓                      ↓                       ↓                ↓
+        Similar nodes       Re-sort by combined       RAG synthesis    Q&A pair → FilterAgent → KnowledgeProcessor → GraphStore
+        (incl. prior        importance + edge                                          ↓                  ↓                ↓
+         LLM-B summaries)   density to anchor                                    keep/discard    tags, entities,    ChromaDB + SQLite
+                                                                                                 relationships      (enriches future queries)
 ```
 
 ## Frontend Architecture

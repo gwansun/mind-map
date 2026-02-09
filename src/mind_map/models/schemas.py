@@ -34,6 +34,9 @@ class GraphNode(BaseModel):
     document: str = Field(description="Summarized text or tag name")
     metadata: NodeMetadata = Field(description="Graph attributes and metrics")
     embedding: list[float] | None = Field(default=None, description="Vector embedding")
+    relation_factor: float | None = Field(
+        default=None, description="Context-dependent edge density score (computed at query time)"
+    )
 
 
 class Edge(BaseModel):
