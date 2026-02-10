@@ -54,7 +54,7 @@ npm run build                         # Production build
 | Role | Provider | Default Model | Purpose |
 |------|----------|---------------|---------|
 | Processing (LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
-| Reasoning (LLM-A) | Claude CLI / Cloud APIs | sonnet | Response generation |
+| Reasoning (LLM-A) | Claude CLI / Antigravity-OAuth / Cloud APIs | sonnet | Response generation |
 
 - **Processing (LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
@@ -64,10 +64,11 @@ npm run build                         # Production build
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
   - Auto-pull (Ollama): disabled by default (enable in `config.yaml`)
 
-- **Reasoning (LLM-A)**: Claude CLI (default) with cloud fallbacks
-  - Priority: Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+- **Reasoning (LLM-A)**: Claude CLI (default) with Antigravity-OAuth and cloud fallbacks
+  - Priority: Claude CLI → Antigravity-OAuth → Gemini → Anthropic Claude → OpenAI GPT
   - Default: `claude-cli` (uses Claude Pro subscription, no API costs)
-  - Requires: `claude` CLI installed and authenticated, OR API key in `.env`
+  - Antigravity-OAuth: Uses Google Antigravity IDE OAuth credentials to access `gemini-3-flash`
+  - Requires: `claude` CLI installed and authenticated, OR Antigravity credentials, OR API key in `.env`
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)` - balances connectivity with time decay.
 - `C_node` and `C_max` are both counted bidirectionally (source OR target) for consistency
@@ -111,6 +112,8 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 | GET | `/stats` | Graph statistics |
 | POST | `/ask` | Query with RAG response |
 | POST | `/memo` | Ingest memo via LangGraph pipeline |
+| GET | `/openclaw/manifest` | OpenClaw tool manifest |
+| POST | `/openclaw/invoke` | OpenClaw unified tool invocation |
 
 ## Key Files
 
@@ -125,7 +128,7 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 
 ### RAG (storage & reasoning)
 - `src/mind_map/rag/graph_store.py` - Hybrid ChromaDB + SQLite storage
-- `src/mind_map/rag/reasoning_llm.py` - Multi-provider reasoning LLM: Claude CLI, Gemini, Anthropic, OpenAI
+- `src/mind_map/rag/reasoning_llm.py` - Multi-provider reasoning LLM: Claude CLI, Antigravity-OAuth, Gemini, Anthropic, OpenAI
 - `src/mind_map/rag/response_generator.py` - ResponseGenerator (LLM-A) for RAG synthesis
 - `src/mind_map/rag/llm_status.py` - Health/status checks for both LLM providers
 
@@ -133,6 +136,8 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 - `src/mind_map/app/pipeline.py` - LangGraph ingestion pipeline
 - `src/mind_map/app/cli/main.py` - Typer CLI entry point with all commands
 - `src/mind_map/app/api/routes.py` - FastAPI endpoints for frontend
+- `src/mind_map/app/openclaw/tool_manifest.py` - OpenClaw tool manifest definition
+- `src/mind_map/app/openclaw/plugin.py` - OpenClaw plugin registration logic
 
 ### Frontend (Angular 18+)
 - `frontend/src/app/app.component.ts` - Main layout with three-panel design
@@ -152,17 +157,24 @@ processing_llm:
   auto_pull: false        # Auto-download Ollama models if not available
 
 reasoning_llm:
-  provider: claude-cli    # Options: claude-cli, gemini, anthropic, openai
+  provider: claude-cli    # Options: claude-cli, antigravity, gemini, anthropic, openai
   model: sonnet           # For claude-cli: sonnet, opus, haiku
   temperature: 0.7
   timeout: 120            # CLI timeout in seconds
+
+openclaw:
+  enabled: false
+  base_url: http://localhost:3000   # OpenClaw server URL
+  api_key: ""                       # OpenClaw API key for registration
 ```
 
 ### .env (for cloud providers)
 ```
-GOOGLE_API_KEY=your-key      # Gemini API (processing + reasoning fallback)
-ANTHROPIC_API_KEY=your-key   # Claude API (processing + reasoning fallback)
-OPENAI_API_KEY=your-key      # GPT API (processing + reasoning fallback)
+GOOGLE_API_KEY=your-key              # Gemini API (processing + reasoning fallback)
+ANTHROPIC_API_KEY=your-key           # Claude API (processing + reasoning fallback)
+OPENAI_API_KEY=your-key              # GPT API (processing + reasoning fallback)
+ANTIGRAVITY_CLIENT_ID=your-id        # Antigravity-OAuth (gemini-3-flash via Antigravity IDE)
+ANTIGRAVITY_CLIENT_SECRET=your-secret  # Antigravity-OAuth client secret
 # Note: Claude CLI uses your Claude Pro subscription - no API key needed
 ```
 

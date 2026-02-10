@@ -5,6 +5,7 @@ from typing import Any
 from mind_map.core.config import load_config
 from mind_map.processor.processing_llm import check_ollama_available, detect_processing_provider
 from mind_map.rag.reasoning_llm import (
+    check_antigravity_available,
     check_anthropic_available,
     check_claude_cli_available,
     check_gemini_available,
@@ -40,6 +41,9 @@ def get_llm_status() -> dict[str, Any]:
     reasoning_status = "offline"
     if reasoning_provider == "claude-cli":
         if check_claude_cli_available():
+            reasoning_status = "online"
+    elif reasoning_provider == "antigravity":
+        if check_antigravity_available():
             reasoning_status = "online"
     elif reasoning_provider in ["gemini", "google"]:
         if check_gemini_available():

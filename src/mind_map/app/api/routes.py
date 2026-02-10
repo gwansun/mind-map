@@ -57,6 +57,13 @@ class MemoRequest(BaseModel):
     source: str | None = None
 
 
+class OpenClawInvokeRequest(BaseModel):
+    """Request body for OpenClaw tool invocation."""
+
+    tool: str
+    parameters: dict[str, Any] = {}
+
+
 def get_store() -> GraphStore:
     """Get or initialize the graph store."""
     store = GraphStore(DATA_DIR)
@@ -253,3 +260,54 @@ async def get_stats() -> dict[str, Any]:
     """Get knowledge graph statistics."""
     store = get_store()
     return store.get_stats()
+
+
+# ============== OpenClaw Integration ==============
+
+
+@app.get("/openclaw/manifest")
+async def openclaw_manifest() -> dict[str, Any]:
+    """Return the OpenClaw tool manifest describing mind-map's capabilities."""
+    from mind_map.app.openclaw.tool_manifest import get_tool_manifest
+
+    return get_tool_manifest()
+
+
+@app.post("/openclaw/invoke")
+async def openclaw_invoke(request: OpenClawInvokeRequest) -> dict[str, Any]:
+    """Unified tool invocation endpoint for OpenClaw.
+
+    Routes to the appropriate internal handler based on the tool name.
+    """
+    tool_name = request.tool
+    params = request.parameters
+
+    if tool_name == "ask":
+        query = params.get("query", "")
+        if not query:
+            raise HTTPException(status_code=400, detail="Missing required parameter: query")
+        ask_req = AskRequest(query=query)
+        result = await ask(ask_req)
+        return {"tool": "ask", "result": result.model_dump()}
+
+    elif tool_name == "memo":
+        text = params.get("text", "")
+        if not text:
+            raise HTTPException(status_code=400, detail="Missing required parameter: text")
+        memo_req = MemoRequest(text=text)
+        result = await add_memo(memo_req)
+        return {"tool": "memo", "result": result}
+
+    elif tool_name == "graph":
+        result = await get_graph()
+        return {"tool": "graph", "result": result.model_dump()}
+
+    elif tool_name == "stats":
+        result = await get_stats()
+        return {"tool": "stats", "result": result}
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown tool: {tool_name}. Available: ask, memo, graph, stats",
+        )

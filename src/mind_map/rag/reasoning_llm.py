@@ -1,12 +1,14 @@
 """Reasoning LLM (LLM-A) management for final response generation.
 
-This module handles Claude CLI, Gemini, Anthropic Claude, and OpenAI GPT setup for reasoning tasks.
+This module handles Claude CLI, Antigravity-OAuth (Gemini), Gemini, Anthropic Claude,
+and OpenAI GPT setup for reasoning tasks.
 Claude CLI is the default provider, leveraging Claude Pro subscription without API costs.
 """
 
 import os
 import shutil
 import subprocess
+import time
 from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
@@ -211,6 +213,147 @@ def get_claude_cli_llm(model: str = "sonnet", timeout: int = 120) -> Any:
     return ClaudeCLILLM(model=model, timeout=timeout)
 
 
+# ============== Antigravity-OAuth (Gemini via Google Antigravity IDE) ==============
+
+# Module-level token cache
+_antigravity_token_cache: dict[str, Any] = {
+    "access_token": None,
+    "expires_at": 0.0,
+    "refresh_token": None,
+}
+
+ANTIGRAVITY_TOKEN_URL = "https://oauth2.googleapis.com/token"
+ANTIGRAVITY_SCOPE = "https://www.googleapis.com/auth/generative-language"
+
+
+def _get_antigravity_token(client_id: str, client_secret: str) -> str | None:
+    """Exchange Antigravity-OAuth credentials for an access token.
+
+    Uses OAuth2 client credentials grant against Google's token endpoint.
+    Caches the token in memory and refreshes on expiry.
+
+    Args:
+        client_id: Antigravity OAuth client ID
+        client_secret: Antigravity OAuth client secret
+
+    Returns:
+        Access token string, or None if exchange fails
+    """
+    import requests
+
+    # Return cached token if still valid (with 60s buffer)
+    if (
+        _antigravity_token_cache["access_token"]
+        and time.time() < _antigravity_token_cache["expires_at"] - 60
+    ):
+        return _antigravity_token_cache["access_token"]
+
+    # Try refresh token first
+    if _antigravity_token_cache["refresh_token"]:
+        try:
+            resp = requests.post(
+                ANTIGRAVITY_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "refresh_token": _antigravity_token_cache["refresh_token"],
+                },
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                _antigravity_token_cache["access_token"] = data["access_token"]
+                _antigravity_token_cache["expires_at"] = time.time() + data.get(
+                    "expires_in", 3600
+                )
+                if "refresh_token" in data:
+                    _antigravity_token_cache["refresh_token"] = data["refresh_token"]
+                return _antigravity_token_cache["access_token"]
+        except Exception:
+            pass  # Fall through to client credentials grant
+
+    # Client credentials grant
+    try:
+        resp = requests.post(
+            ANTIGRAVITY_TOKEN_URL,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": ANTIGRAVITY_SCOPE,
+            },
+            timeout=15,
+        )
+
+        if resp.status_code != 200:
+            console.print(
+                f"[red]Antigravity-OAuth token exchange failed: {resp.status_code}[/red]"
+            )
+            return None
+
+        data = resp.json()
+        _antigravity_token_cache["access_token"] = data["access_token"]
+        _antigravity_token_cache["expires_at"] = time.time() + data.get("expires_in", 3600)
+        if "refresh_token" in data:
+            _antigravity_token_cache["refresh_token"] = data["refresh_token"]
+
+        return _antigravity_token_cache["access_token"]
+
+    except Exception as e:
+        console.print(f"[red]Antigravity-OAuth token exchange error: {e}[/red]")
+        return None
+
+
+def check_antigravity_available() -> bool:
+    """Check if Antigravity-OAuth credentials are configured."""
+    return bool(os.getenv("ANTIGRAVITY_CLIENT_ID") and os.getenv("ANTIGRAVITY_CLIENT_SECRET"))
+
+
+def get_antigravity_llm(
+    model: str = "gemini-3-flash", temperature: float = 0.7
+) -> Any:
+    """Get Gemini LLM authenticated via Antigravity-OAuth.
+
+    Uses OAuth2 token exchange with Google's Antigravity IDE credentials
+    to access Gemini models without a static GOOGLE_API_KEY.
+
+    Args:
+        model: Gemini model name (default: gemini-3-flash)
+        temperature: Temperature for response generation
+
+    Returns:
+        ChatGoogleGenerativeAI instance or None if credentials missing/exchange fails
+    """
+    client_id = os.getenv("ANTIGRAVITY_CLIENT_ID")
+    client_secret = os.getenv("ANTIGRAVITY_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        console.print(
+            "[yellow]ANTIGRAVITY_CLIENT_ID/SECRET not set. "
+            "Cannot use Antigravity-OAuth.[/yellow]"
+        )
+        return None
+
+    access_token = _get_antigravity_token(client_id, client_secret)
+    if not access_token:
+        return None
+
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(
+            model=model,
+            google_api_key=access_token,
+            temperature=temperature,
+        )
+    except ImportError:
+        console.print("[red]langchain-google-genai not installed[/red]")
+        return None
+    except Exception as e:
+        console.print(f"[red]Failed to initialize Antigravity Gemini: {e}[/red]")
+        return None
+
+
 # ============== Cloud Provider LLMs ==============
 
 
@@ -316,7 +459,8 @@ def get_reasoning_llm() -> Any:
     Returns LLM based on reasoning_llm configuration in config.yaml.
     Defaults to Claude CLI (uses Claude Pro subscription without API costs).
 
-    Fallback priority: Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+    Fallback priority:
+        Configured provider → Claude CLI → Antigravity → Gemini → Anthropic → OpenAI
 
     Returns:
         LangChain LLM instance or None if not available
@@ -338,6 +482,12 @@ def get_reasoning_llm() -> Any:
             console.print(f"[dim]Using Claude CLI ({model})[/dim]")
             return llm
         console.print("[yellow]Claude CLI not available, trying fallback...[/yellow]")
+    elif provider == "antigravity":
+        llm = get_antigravity_llm(model, temperature)
+        if llm:
+            console.print(f"[dim]Using Antigravity-OAuth Gemini ({model})[/dim]")
+            return llm
+        console.print("[yellow]Antigravity-OAuth not available, trying fallback...[/yellow]")
     elif provider == "gemini" or provider == "google":
         llm = get_gemini_llm(model, temperature)
         if llm:
@@ -356,11 +506,17 @@ def get_reasoning_llm() -> Any:
     else:
         console.print(f"[yellow]Unknown reasoning_llm provider: {provider}[/yellow]")
 
-    # Fallback chain: Claude CLI -> Gemini -> Anthropic -> OpenAI
+    # Fallback chain: Claude CLI -> Antigravity -> Gemini -> Anthropic -> OpenAI
     if provider != "claude-cli" and check_claude_cli_installed():
         llm = get_claude_cli_llm("sonnet", 120)
         if llm:
             console.print("[dim]Using Claude CLI as fallback[/dim]")
+            return llm
+
+    if provider != "antigravity" and check_antigravity_available():
+        llm = get_antigravity_llm("gemini-3-flash", temperature)
+        if llm:
+            console.print("[dim]Using Antigravity-OAuth Gemini as fallback[/dim]")
             return llm
 
     if provider not in ["gemini", "google"] and check_gemini_available():
