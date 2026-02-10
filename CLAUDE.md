@@ -112,6 +112,25 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 | POST | `/ask` | Query with RAG response |
 | POST | `/memo` | Ingest memo via LangGraph pipeline |
 
+## MCP Tools
+
+The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via FastMCP. All tools accept an optional `workspace_id` for multi-workspace isolation.
+
+| Tool | Description |
+|------|-------------|
+| `mind_map_retrieve` | Similarity search with relation-factor enrichment |
+| `mind_map_memo` | Ingest text through the LangGraph pipeline |
+| `mind_map_stats` | Knowledge graph statistics |
+| `mind_map_report` | JSON report with summary stats and top-5 nodes |
+| `mind_map_prune` | Prune the least important 10% of nodes |
+
+### Prune Algorithm (`mind_map_prune`)
+1. Calculate importance for all concept/entity nodes (tags excluded as direct candidates)
+2. Sort ascending, take bottom `max(1, floor(total * 0.1))`
+3. Tags removed only if **all** their edges connect to nodes in the prune set (shared tags preserved)
+4. Delete edges, single-connected tags, then prune target nodes
+5. Returns JSON: `{ deleted_nodes, deleted_tags, deleted_edges_count, summary }`
+
 ## Key Files
 
 ### Core (shared types & config)
@@ -128,6 +147,9 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 - `src/mind_map/rag/reasoning_llm.py` - Multi-provider reasoning LLM: Claude CLI, Gemini, Anthropic, OpenAI
 - `src/mind_map/rag/response_generator.py` - ResponseGenerator (LLM-A) for RAG synthesis
 - `src/mind_map/rag/llm_status.py` - Health/status checks for both LLM providers
+
+### MCP (Model Context Protocol server)
+- `src/mind_map/mcp/server.py` - FastMCP server with retrieve, memo, stats, report, prune tools
 
 ### App (orchestration, CLI, API)
 - `src/mind_map/app/pipeline.py` - LangGraph ingestion pipeline

@@ -373,6 +373,38 @@ class GraphStore:
         score = (c_node / c_max) * math.exp(-lambda_decay * delta_t)
         return min(score, 1.0)
 
+    def delete_node(self, node_id: str) -> None:
+        """Delete a node from ChromaDB."""
+        self.collection.delete(ids=[node_id])
+
+    def delete_edges_for_node(self, node_id: str) -> int:
+        """Delete all edges connected to a node and update neighbor connection counts.
+
+        Returns the number of edges deleted.
+        """
+        # Find all neighbors before deleting edges
+        cursor = self.sqlite.execute(
+            "SELECT DISTINCT source FROM edges WHERE target = ? "
+            "UNION "
+            "SELECT DISTINCT target FROM edges WHERE source = ?",
+            (node_id, node_id),
+        )
+        neighbor_ids = [row[0] for row in cursor.fetchall() if row[0] != node_id]
+
+        # Delete all edges for this node
+        cursor = self.sqlite.execute(
+            "DELETE FROM edges WHERE source = ? OR target = ?",
+            (node_id, node_id),
+        )
+        deleted = cursor.rowcount
+        self.sqlite.commit()
+
+        # Update connection counts for surviving neighbors
+        for nid in neighbor_ids:
+            self._update_connection_count(nid)
+
+        return deleted
+
     def update_interaction(self, node_id: str) -> None:
         """Update the last_interaction timestamp for a node."""
         result = self.collection.get(ids=[node_id], include=["metadatas"])
