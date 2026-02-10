@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from mind_map.agents.pipeline import ingest_memo
-from mind_map.core.graph_store import GraphStore
+from mind_map.app.pipeline import ingest_memo
+from mind_map.rag.graph_store import GraphStore
 
 
 @pytest.fixture

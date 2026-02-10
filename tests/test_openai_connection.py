@@ -59,8 +59,8 @@ class TestOpenAIConnection:
         """Test ResponseGenerator with OpenAI."""
         from langchain_openai import ChatOpenAI
 
-        from mind_map.agents.response_generator import ResponseGenerator
-        from mind_map.models.schemas import GraphNode, NodeMetadata, NodeType
+        from mind_map.core.schemas import GraphNode, NodeMetadata, NodeType
+        from mind_map.rag.response_generator import ResponseGenerator
 
         llm = ChatOpenAI(
             model="gpt-4o-mini",

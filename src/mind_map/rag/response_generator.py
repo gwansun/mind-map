@@ -4,7 +4,7 @@ from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from mind_map.models.schemas import GraphNode
+from mind_map.core.schemas import GraphNode
 
 # Prompt for when we have context from the knowledge graph
 RESPONSE_WITH_CONTEXT_PROMPT = ChatPromptTemplate.from_messages([

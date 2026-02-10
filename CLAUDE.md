@@ -56,8 +56,9 @@ npm run build                         # Production build
 | Processing (LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
 | Reasoning (LLM-A) | Claude CLI / Cloud APIs | sonnet | Response generation |
 
-- **Processing (LLM-B)**: Cloud-first with Ollama fallback
+- **Processing (LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
+  - Each cloud provider is validated with a test API call before use; if validation fails (e.g., depleted credits), the next provider is tried
   - Cloud models: `gemini-2.0-flash`, `claude-haiku-4-5-20251001`, `gpt-4o-mini`
   - Ollama recommended: `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
@@ -69,6 +70,10 @@ npm run build                         # Production build
   - Requires: `claude` CLI installed and authenticated, OR API key in `.env`
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)` - balances connectivity with time decay.
+- `C_node` and `C_max` are both counted bidirectionally (source OR target) for consistency
+- Score is clamped to `[0.0, 1.0]`
+
+**Similarity Threshold**: `query_similar()` uses `max_distance=0.5` (cosine) to filter irrelevant results. Only nodes with >= 50% similarity are returned as context, preventing cross-topic edge pollution.
 
 **Relation Factor**: Context nodes are weighted by edge density to the most query-relevant node.
 Combined score: `importance * (1 + relation_factor)` where `relation_factor = edges_between(anchor, node) / total_edges(anchor)`.
@@ -109,25 +114,25 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 
 ## Key Files
 
-### CLI & API
-- `src/mind_map/cli/main.py` - Typer CLI entry point with all commands
-- `src/mind_map/api/routes.py` - FastAPI endpoints for frontend
+### Core (shared types & config)
+- `src/mind_map/core/schemas.py` - Pydantic models (GraphNode, Edge, FilterDecision, ExtractionResult)
+- `src/mind_map/core/config.py` - Configuration loader (config.yaml, .env)
 
-### Core
-- `src/mind_map/core/llm.py` - LLM facade and configuration loader
-- `src/mind_map/core/processing_llm.py` - Multi-provider processing LLM: Cloud APIs + Ollama (LLM-B)
-- `src/mind_map/core/reasoning_llm.py` - Multi-provider setup: Claude CLI, Gemini, Anthropic, OpenAI (LLM-A)
-- `src/mind_map/core/graph_store.py` - Hybrid ChromaDB + SQLite storage
-- `src/mind_map/core/importance.py` - Importance score calculation
+### Processor (LLM-B)
+- `src/mind_map/processor/processing_llm.py` - Multi-provider processing LLM: Cloud APIs + Ollama
+- `src/mind_map/processor/filter_agent.py` - FilterAgent for keep/discard decisions
+- `src/mind_map/processor/knowledge_processor.py` - KnowledgeProcessor for entity extraction
 
-### Agents
-- `src/mind_map/agents/pipeline.py` - LangGraph ingestion pipeline
-- `src/mind_map/agents/filter_agent.py` - FilterAgent (LLM-B) for keep/discard
-- `src/mind_map/agents/knowledge_processor.py` - KnowledgeProcessor (LLM-B) for extraction
-- `src/mind_map/agents/response_generator.py` - ResponseGenerator (LLM-A) for RAG
+### RAG (storage & reasoning)
+- `src/mind_map/rag/graph_store.py` - Hybrid ChromaDB + SQLite storage
+- `src/mind_map/rag/reasoning_llm.py` - Multi-provider reasoning LLM: Claude CLI, Gemini, Anthropic, OpenAI
+- `src/mind_map/rag/response_generator.py` - ResponseGenerator (LLM-A) for RAG synthesis
+- `src/mind_map/rag/llm_status.py` - Health/status checks for both LLM providers
 
-### Models
-- `src/mind_map/models/schemas.py` - Pydantic models (GraphNode, Edge, FilterDecision, ExtractionResult)
+### App (orchestration, CLI, API)
+- `src/mind_map/app/pipeline.py` - LangGraph ingestion pipeline
+- `src/mind_map/app/cli/main.py` - Typer CLI entry point with all commands
+- `src/mind_map/app/api/routes.py` - FastAPI endpoints for frontend
 
 ### Frontend (Angular 18+)
 - `frontend/src/app/app.component.ts` - Main layout with three-panel design
@@ -187,13 +192,16 @@ Text Input → FilterAgent → KnowledgeProcessor → GraphStore
 
 ### Query (ask command)
 ```
-Query → ChromaDB Search → Enrich (relation factor) → ResponseGenerator → Response
-              ↓                      ↓                       ↓                ↓
-        Similar nodes       Re-sort by combined       RAG synthesis    Q&A pair → FilterAgent → KnowledgeProcessor → GraphStore
-        (incl. prior        importance + edge                                          ↓                  ↓                ↓
-         LLM-B summaries)   density to anchor                                    keep/discard    tags, entities,    ChromaDB + SQLite
-                                                                                                 relationships      (enriches future queries)
+Query → ChromaDB Search (max_distance=0.5) → Enrich (relation factor) → ResponseGenerator → Response
+              ↓                                       ↓                         ↓                ↓
+        Similar nodes                          Re-sort by combined        RAG synthesis    Q&A pair → FilterAgent → KnowledgeProcessor → GraphStore
+        (filtered by                           importance + edge          (always runs,          ↓                  ↓                ↓
+         similarity threshold)                 density to anchor           even if no        keep/discard    tags, entities,    ChromaDB + SQLite
+                                                                           context found)                   relationships      (enriches future queries)
 ```
+- Reasoning LLM always generates a response, even for new topics with no context
+- Processing LLM pipeline has heuristic fallback if LLM calls fail at runtime
+- Q&A nodes are only linked to context nodes if context was found (no cross-topic edges)
 
 ## Frontend Architecture
 
@@ -217,6 +225,7 @@ frontend/
 - Node types visually distinguished: Concept (large/purple), Entity (medium/green), Tag (small/yellow)
 - Real-time graph refresh after mutations
 - Markdown rendering in chat responses
+- Scrollable chat and inspector panels (flex chain with `min-height: 0` at each level)
 - HTTP caching with configurable TTLs
 - Error handling with toast notifications
 - Responsive design (desktop/tablet/mobile)

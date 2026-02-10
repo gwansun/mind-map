@@ -108,6 +108,11 @@ import { LoadingSpinnerComponent } from '../../shared';
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      height: 100%;
+    }
+
     .inspector-panel {
       display: flex;
       flex-direction: column;

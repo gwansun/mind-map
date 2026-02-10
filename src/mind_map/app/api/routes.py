@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from mind_map.core.graph_store import GraphStore
+from mind_map.rag.graph_store import GraphStore
 
 app = FastAPI(
     title="Mind Map API",
@@ -74,12 +74,12 @@ async def root() -> dict[str, str]:
 @app.get("/health")
 async def health() -> dict[str, Any]:
     """Health check endpoint with LLM status and graph statistics."""
-    from mind_map.core.llm import get_llm_status
-    
+    from mind_map.rag.llm_status import get_llm_status
+
     store = get_store()
     stats = store.get_stats()
     llm_status = get_llm_status()
-    
+
     return {
         "status": "healthy",
         "llm_status": llm_status,
@@ -150,10 +150,11 @@ async def ask(request: AskRequest) -> AskResponse:
     3. Process Q&A pair through LLM-B pipeline to extract and store knowledge
     4. Link new nodes to context nodes if any existed
     """
-    from mind_map.agents.response_generator import ResponseGenerator
-    from mind_map.agents.pipeline import ingest_memo
-    from mind_map.core.llm import get_reasoning_llm, get_processing_llm
-    from mind_map.models.schemas import Edge
+    from mind_map.app.pipeline import ingest_memo
+    from mind_map.core.schemas import Edge
+    from mind_map.processor.processing_llm import get_processing_llm
+    from mind_map.rag.reasoning_llm import get_reasoning_llm
+    from mind_map.rag.response_generator import ResponseGenerator
 
     store = get_store()
 
@@ -225,8 +226,8 @@ async def ask(request: AskRequest) -> AskResponse:
 @app.post("/memo")
 async def add_memo(request: MemoRequest) -> dict[str, Any]:
     """Ingest a memo into the knowledge graph via the LangGraph pipeline."""
-    from mind_map.agents.pipeline import ingest_memo
-    from mind_map.core.llm import get_processing_llm
+    from mind_map.app.pipeline import ingest_memo
+    from mind_map.processor.processing_llm import get_processing_llm
 
     store = get_store()
     store.initialize()

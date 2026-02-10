@@ -1,1 +1,1 @@
-"""Core business logic for Mind Map."""
+"""Core shared types and configuration for Mind Map."""

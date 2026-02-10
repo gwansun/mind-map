@@ -7,12 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mind_map.core.graph_store import GraphStore
-from mind_map.models.schemas import Edge, GraphNode, NodeMetadata, NodeType
+from mind_map.core.schemas import Edge, GraphNode, NodeMetadata, NodeType
+from mind_map.rag.graph_store import GraphStore
 
-# The canonical patch target for load_config (defined in llm.py,
-# imported locally by processing_llm.py and llm.py functions)
-LOAD_CONFIG_PATCH = "mind_map.core.llm.load_config"
+# The canonical patch target for load_config (defined in config.py,
+# imported by processing_llm.py, reasoning_llm.py, and llm.py)
+LOAD_CONFIG_PATCH = "mind_map.core.config.load_config"
 
 
 # ============== Fixtures ==============
@@ -48,7 +48,7 @@ class TestTryCloudProcessingLLM:
 
     def test_returns_none_when_no_keys(self, _clean_env):
         """Should return (None, None) when no API keys are set."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         llm, provider = _try_cloud_processing_llm("auto")
         assert llm is None
@@ -56,7 +56,7 @@ class TestTryCloudProcessingLLM:
 
     def test_returns_none_for_unknown_provider(self, _clean_env):
         """Should return (None, None) for unknown provider string."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         llm, provider = _try_cloud_processing_llm("unknown")
         assert llm is None
@@ -64,7 +64,7 @@ class TestTryCloudProcessingLLM:
 
     def test_gemini_selected_when_key_present(self, _clean_env):
         """Should return gemini LLM when GOOGLE_API_KEY is set."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}):
@@ -80,7 +80,7 @@ class TestTryCloudProcessingLLM:
 
     def test_anthropic_selected_when_key_present(self, _clean_env):
         """Should return anthropic LLM when ANTHROPIC_API_KEY is set."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
@@ -96,7 +96,7 @@ class TestTryCloudProcessingLLM:
 
     def test_openai_selected_when_key_present(self, _clean_env):
         """Should return openai LLM when OPENAI_API_KEY is set."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
@@ -112,7 +112,7 @@ class TestTryCloudProcessingLLM:
 
     def test_priority_gemini_over_anthropic(self, _clean_env):
         """Gemini should be tried before Anthropic when both keys exist."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_gemini = MagicMock()
         with patch.dict(os.environ, {
@@ -135,7 +135,7 @@ class TestTryCloudProcessingLLM:
 
     def test_specific_provider_only_tries_that(self, _clean_env):
         """provider='anthropic' should skip Gemini even if key exists."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_anthropic = MagicMock()
         with patch.dict(os.environ, {
@@ -156,7 +156,7 @@ class TestTryCloudProcessingLLM:
 
     def test_fallthrough_when_import_fails(self, _clean_env):
         """Should skip provider when langchain package not installed."""
-        from mind_map.core.processing_llm import _try_cloud_processing_llm
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_openai = MagicMock()
         with patch.dict(os.environ, {
@@ -189,7 +189,7 @@ class TestDetectProcessingProvider:
 
     def test_ollama_provider_config(self, _clean_env):
         """When provider=ollama, should return ollama regardless of API keys."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {
             "processing_llm": {"provider": "ollama", "model": "mistral"}
@@ -202,7 +202,7 @@ class TestDetectProcessingProvider:
 
     def test_auto_provider_with_google_key(self, _clean_env):
         """auto provider with GOOGLE_API_KEY should detect gemini."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
@@ -213,7 +213,7 @@ class TestDetectProcessingProvider:
 
     def test_auto_provider_with_anthropic_key(self, _clean_env):
         """auto provider with ANTHROPIC_API_KEY should detect anthropic."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "akey"}):
@@ -223,7 +223,7 @@ class TestDetectProcessingProvider:
 
     def test_auto_provider_with_openai_key(self, _clean_env):
         """auto provider with OPENAI_API_KEY should detect openai."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
         with patch.dict(os.environ, {"OPENAI_API_KEY": "okey"}):
@@ -233,7 +233,7 @@ class TestDetectProcessingProvider:
 
     def test_auto_provider_no_keys_falls_back_to_ollama(self, _clean_env):
         """auto provider with no API keys should fall back to ollama."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
         with patch(LOAD_CONFIG_PATCH, return_value=config):
@@ -243,7 +243,7 @@ class TestDetectProcessingProvider:
 
     def test_default_provider_is_auto(self, _clean_env):
         """When no provider is configured, default should be auto."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"model": "phi3.5"}}
         with patch(LOAD_CONFIG_PATCH, return_value=config):
@@ -254,7 +254,7 @@ class TestDetectProcessingProvider:
 
     def test_specific_cloud_provider_without_key(self, _clean_env):
         """Specific cloud provider without key still returns that provider name."""
-        from mind_map.core.processing_llm import detect_processing_provider
+        from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "gemini", "model": "phi3.5"}}
         with patch(LOAD_CONFIG_PATCH, return_value=config):
@@ -272,7 +272,7 @@ class TestGetProcessingLLM:
 
     def test_ollama_provider_skips_cloud(self, _clean_env):
         """provider=ollama should go directly to Ollama, skip cloud."""
-        from mind_map.core.processing_llm import get_processing_llm
+        from mind_map.processor.processing_llm import get_processing_llm
 
         config = {
             "processing_llm": {
@@ -285,10 +285,10 @@ class TestGetProcessingLLM:
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
             with patch(LOAD_CONFIG_PATCH, return_value=config):
                 with patch(
-                    "mind_map.core.processing_llm._try_cloud_processing_llm"
+                    "mind_map.processor.processing_llm._try_cloud_processing_llm"
                 ) as mock_cloud:
                     with patch(
-                        "mind_map.core.processing_llm._get_ollama_processing_llm",
+                        "mind_map.processor.processing_llm._get_ollama_processing_llm",
                         return_value=mock_ollama_llm,
                     ):
                         llm = get_processing_llm()
@@ -297,7 +297,7 @@ class TestGetProcessingLLM:
 
     def test_auto_provider_tries_cloud_first(self, _clean_env):
         """provider=auto should try cloud first."""
-        from mind_map.core.processing_llm import get_processing_llm
+        from mind_map.processor.processing_llm import get_processing_llm
 
         config = {
             "processing_llm": {
@@ -309,7 +309,7 @@ class TestGetProcessingLLM:
         mock_cloud_llm = MagicMock()
         with patch(LOAD_CONFIG_PATCH, return_value=config):
             with patch(
-                "mind_map.core.processing_llm._try_cloud_processing_llm",
+                "mind_map.processor.processing_llm._try_cloud_processing_llm",
                 return_value=(mock_cloud_llm, "gemini"),
             ):
                 llm = get_processing_llm()
@@ -317,7 +317,7 @@ class TestGetProcessingLLM:
 
     def test_auto_provider_falls_back_to_ollama(self, _clean_env):
         """provider=auto should fall back to Ollama when cloud fails."""
-        from mind_map.core.processing_llm import get_processing_llm
+        from mind_map.processor.processing_llm import get_processing_llm
 
         config = {
             "processing_llm": {
@@ -329,11 +329,11 @@ class TestGetProcessingLLM:
         mock_ollama_llm = MagicMock()
         with patch(LOAD_CONFIG_PATCH, return_value=config):
             with patch(
-                "mind_map.core.processing_llm._try_cloud_processing_llm",
+                "mind_map.processor.processing_llm._try_cloud_processing_llm",
                 return_value=(None, None),
             ):
                 with patch(
-                    "mind_map.core.processing_llm._get_ollama_processing_llm",
+                    "mind_map.processor.processing_llm._get_ollama_processing_llm",
                     return_value=mock_ollama_llm,
                 ):
                     llm = get_processing_llm()
@@ -341,7 +341,7 @@ class TestGetProcessingLLM:
 
     def test_specific_cloud_provider_falls_back_to_ollama(self, _clean_env):
         """Specific cloud provider should fall back to Ollama when unavailable."""
-        from mind_map.core.processing_llm import get_processing_llm
+        from mind_map.processor.processing_llm import get_processing_llm
 
         config = {
             "processing_llm": {
@@ -353,11 +353,11 @@ class TestGetProcessingLLM:
         mock_ollama_llm = MagicMock()
         with patch(LOAD_CONFIG_PATCH, return_value=config):
             with patch(
-                "mind_map.core.processing_llm._try_cloud_processing_llm",
+                "mind_map.processor.processing_llm._try_cloud_processing_llm",
                 return_value=(None, None),
             ):
                 with patch(
-                    "mind_map.core.processing_llm._get_ollama_processing_llm",
+                    "mind_map.processor.processing_llm._get_ollama_processing_llm",
                     return_value=mock_ollama_llm,
                 ):
                     llm = get_processing_llm()
@@ -372,7 +372,7 @@ class TestGetLLMStatus:
 
     def test_reports_ollama_when_no_keys(self, _clean_env):
         """Should report ollama provider when no cloud keys available."""
-        from mind_map.core.llm import get_llm_status
+        from mind_map.rag.llm_status import get_llm_status
 
         config = {
             "processing_llm": {"provider": "auto", "model": "phi3.5"},
@@ -380,11 +380,11 @@ class TestGetLLMStatus:
         }
         with patch(LOAD_CONFIG_PATCH, return_value=config):
             with patch(
-                "mind_map.core.llm.check_ollama_available",
+                "mind_map.rag.llm_status.check_ollama_available",
                 return_value=True,
             ):
                 with patch(
-                    "mind_map.core.llm.check_claude_cli_available",
+                    "mind_map.rag.llm_status.check_claude_cli_available",
                     return_value=False,
                 ):
                     status = get_llm_status()
@@ -394,7 +394,7 @@ class TestGetLLMStatus:
 
     def test_reports_gemini_when_key_present(self, _clean_env):
         """Should report gemini provider when GOOGLE_API_KEY is set."""
-        from mind_map.core.llm import get_llm_status
+        from mind_map.rag.llm_status import get_llm_status
 
         config = {
             "processing_llm": {"provider": "auto", "model": "phi3.5"},
@@ -403,11 +403,11 @@ class TestGetLLMStatus:
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
             with patch(LOAD_CONFIG_PATCH, return_value=config):
                 with patch(
-                    "mind_map.core.llm.check_gemini_available",
+                    "mind_map.rag.llm_status.check_gemini_available",
                     return_value=True,
                 ):
                     with patch(
-                        "mind_map.core.llm.check_claude_cli_available",
+                        "mind_map.rag.llm_status.check_claude_cli_available",
                         return_value=False,
                     ):
                         status = get_llm_status()
@@ -417,7 +417,7 @@ class TestGetLLMStatus:
 
     def test_reports_ollama_explicit_provider(self, _clean_env):
         """Should report ollama when provider is explicitly set to ollama."""
-        from mind_map.core.llm import get_llm_status
+        from mind_map.rag.llm_status import get_llm_status
 
         config = {
             "processing_llm": {"provider": "ollama", "model": "mistral"},
@@ -426,11 +426,11 @@ class TestGetLLMStatus:
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
             with patch(LOAD_CONFIG_PATCH, return_value=config):
                 with patch(
-                    "mind_map.core.llm.check_ollama_available",
+                    "mind_map.rag.llm_status.check_ollama_available",
                     return_value=False,
                 ):
                     with patch(
-                        "mind_map.core.llm.check_claude_cli_available",
+                        "mind_map.rag.llm_status.check_claude_cli_available",
                         return_value=False,
                     ):
                         status = get_llm_status()
@@ -661,7 +661,7 @@ class TestFormatContext:
 
     def test_includes_relevance_when_set(self):
         """Should include 'relevance:' when relation_factor is set."""
-        from mind_map.agents.response_generator import ResponseGenerator
+        from mind_map.rag.response_generator import ResponseGenerator
 
         mock_llm = MagicMock()
         gen = ResponseGenerator(mock_llm)
@@ -673,7 +673,7 @@ class TestFormatContext:
 
     def test_no_relevance_when_none(self):
         """Should omit 'relevance:' when relation_factor is None."""
-        from mind_map.agents.response_generator import ResponseGenerator
+        from mind_map.rag.response_generator import ResponseGenerator
 
         mock_llm = MagicMock()
         gen = ResponseGenerator(mock_llm)
@@ -685,7 +685,7 @@ class TestFormatContext:
 
     def test_empty_nodes(self):
         """Should return empty string for empty node list."""
-        from mind_map.agents.response_generator import ResponseGenerator
+        from mind_map.rag.response_generator import ResponseGenerator
 
         mock_llm = MagicMock()
         gen = ResponseGenerator(mock_llm)
@@ -695,7 +695,7 @@ class TestFormatContext:
 
     def test_multiple_nodes_formatted(self):
         """Should format multiple nodes with sequential numbering."""
-        from mind_map.agents.response_generator import ResponseGenerator
+        from mind_map.rag.response_generator import ResponseGenerator
 
         mock_llm = MagicMock()
         gen = ResponseGenerator(mock_llm)
@@ -722,7 +722,7 @@ class TestEnrichmentEndToEnd:
 
     def test_ingest_and_enrich_flow(self, temp_store: GraphStore):
         """Ingest related memos, query, enrich, verify relation factors."""
-        from mind_map.agents.pipeline import ingest_memo
+        from mind_map.app.pipeline import ingest_memo
 
         # Ingest related content
         success1, _, ids1 = ingest_memo(
@@ -748,7 +748,7 @@ class TestEnrichmentEndToEnd:
 
     def test_enrich_preserves_all_nodes(self, temp_store: GraphStore):
         """Enrichment should not drop any nodes."""
-        from mind_map.agents.pipeline import ingest_memo
+        from mind_map.app.pipeline import ingest_memo
 
         ingest_memo("Machine learning is a field of AI", temp_store)
         ingest_memo("Deep learning uses neural networks", temp_store)

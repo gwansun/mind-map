@@ -6,8 +6,8 @@ from typing import Any
 
 from langgraph.graph import END, StateGraph
 
-from mind_map.core.graph_store import GraphStore
-from mind_map.models.schemas import Edge, ExtractionResult, FilterDecision, NodeType
+from mind_map.core.schemas import Edge, ExtractionResult, FilterDecision, NodeType
+from mind_map.rag.graph_store import GraphStore
 
 
 @dataclass
@@ -63,14 +63,21 @@ def create_filter_node(llm: Any | None = None):
                 )
             }
 
-        # Use LLM for filtering
-        from mind_map.agents.filter_agent import FilterAgent
+        # Use LLM for filtering, fall back to heuristic on failure
+        from mind_map.processor.filter_agent import FilterAgent
         agent = FilterAgent(llm)
         try:
             decision = agent.evaluate_sync(text)
             return {"filter_decision": decision}
-        except Exception as e:
-            return {"error": f"Filter agent error: {e}"}
+        except Exception:
+            # LLM failed — fall back to heuristic (keep substantive content)
+            return {
+                "filter_decision": FilterDecision(
+                    action="keep",
+                    reason="LLM filter unavailable, kept by heuristic fallback",
+                    summary=text,
+                )
+            }
 
     return filter_node
 
@@ -115,14 +122,39 @@ def create_extraction_node(llm: Any | None = None):
                 )
             }
 
-        # Use LLM for extraction
-        from mind_map.agents.knowledge_processor import KnowledgeProcessor
+        # Use LLM for extraction, fall back to heuristic on failure
+        from mind_map.processor.knowledge_processor import KnowledgeProcessor
         processor = KnowledgeProcessor(llm)
         try:
             result = processor.extract_sync(text)
             return {"extraction": result}
-        except Exception as e:
-            return {"error": f"Extraction error: {e}"}
+        except Exception:
+            # LLM failed — fall back to heuristic extraction
+            import re
+            hashtags = re.findall(r"#(\w+)", text)
+            tags = [f"#{tag}" for tag in hashtags]
+
+            words = text.split()
+            entities = [
+                w for w in words
+                if len(w) > 2 and w[0].isupper() and not w.isupper()
+            ]
+            entities = list(set(entities))[:5]
+
+            if not tags:
+                keywords = ["python", "api", "database", "test", "config", "auth"]
+                for kw in keywords:
+                    if kw in text.lower():
+                        tags.append(f"#{kw.capitalize()}")
+
+            return {
+                "extraction": ExtractionResult(
+                    summary=text[:200] if len(text) > 200 else text,
+                    tags=tags[:5],
+                    entities=entities,
+                    relationships=[],
+                )
+            }
 
     return extraction_node
 

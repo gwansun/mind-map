@@ -8,7 +8,7 @@ from typing import Any
 
 import chromadb
 
-from mind_map.models.schemas import Edge, GraphNode, NodeMetadata, NodeType
+from mind_map.core.schemas import Edge, GraphNode, NodeMetadata, NodeType
 
 
 class GraphStore:
@@ -210,13 +210,15 @@ class GraphStore:
         return [n for n in nodes if n is not None], edges
 
     def query_similar(
-        self, query: str | list[float], n_results: int = 10
+        self, query: str | list[float], n_results: int = 10, max_distance: float = 0.5
     ) -> list[GraphNode]:
         """Query nodes by text or embedding similarity.
 
         Args:
             query: Either a text string or embedding vector
             n_results: Maximum number of results to return
+            max_distance: Maximum cosine distance to include (0=identical, 1=unrelated, 2=opposite).
+                Results with distance > max_distance are filtered out.
 
         Returns:
             List of GraphNode objects sorted by relevance
@@ -241,14 +243,19 @@ class GraphStore:
 
         nodes: list[GraphNode] = []
         for i, node_id in enumerate(results["ids"][0]):
+            distance = results["distances"][0][i] if results["distances"] else 0.0
+
+            # Filter out irrelevant results beyond the distance threshold
+            if distance > max_distance:
+                continue
+
             metadata = (
                 NodeMetadata(**results["metadatas"][0][i])
                 if results["metadatas"]
                 else NodeMetadata(type=NodeType.CONCEPT, created_at=0, last_interaction=0)
             )
-            # Calculate importance score from distance
-            distance = results["distances"][0][i] if results["distances"] else 0.0
-            metadata.importance_score = 1 - distance  # Convert distance to similarity
+            # Convert distance to similarity score [0.0, 1.0]
+            metadata.importance_score = max(0.0, 1 - distance)
 
             node = GraphNode(
                 id=node_id,
@@ -339,17 +346,23 @@ class GraphStore:
     def calculate_importance(
         self, node_id: str, lambda_decay: float = 0.05, time_unit_days: float = 1.0
     ) -> float:
-        """Calculate importance score S = (C_node / C_max) * e^(-lambda * delta_t)."""
+        """Calculate importance score S = (C_node / C_max) * e^(-lambda * delta_t).
+
+        Returns a value in [0.0, 1.0].
+        """
         node = self.get_node(node_id)
         if not node:
             return 0.0
 
-        # Get max connections across all nodes
+        # Get max connections across all nodes, counting both directions
+        # (same method used to track connection_count per node)
         cursor = self.sqlite.execute("""
             SELECT MAX(cnt) FROM (
-                SELECT COUNT(*) as cnt FROM edges GROUP BY source
-                UNION ALL
-                SELECT COUNT(*) as cnt FROM edges GROUP BY target
+                SELECT COUNT(*) as cnt FROM (
+                    SELECT source AS node_id FROM edges
+                    UNION ALL
+                    SELECT target AS node_id FROM edges
+                ) GROUP BY node_id
             )
         """)
         c_max = cursor.fetchone()[0] or 1
@@ -358,7 +371,7 @@ class GraphStore:
         delta_t = (time.time() - node.metadata.last_interaction) / (86400 * time_unit_days)
 
         score = (c_node / c_max) * math.exp(-lambda_decay * delta_t)
-        return score
+        return min(score, 1.0)
 
     def update_interaction(self, node_id: str) -> None:
         """Update the last_interaction timestamp for a node."""

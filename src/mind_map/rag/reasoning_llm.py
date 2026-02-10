@@ -321,7 +321,7 @@ def get_reasoning_llm() -> Any:
     Returns:
         LangChain LLM instance or None if not available
     """
-    from .llm import load_config
+    from mind_map.core.config import load_config
 
     config = load_config()
     reasoning_config = config.get("reasoning_llm", {})

@@ -251,7 +251,7 @@ def init(
     ] = False,
 ) -> None:
     """Initialize the Mind Map database and configuration."""
-    from mind_map.core.graph_store import GraphStore
+    from mind_map.rag.graph_store import GraphStore
 
     data_dir.mkdir(parents=True, exist_ok=True)
     store = GraphStore(data_dir)
@@ -259,7 +259,7 @@ def init(
     console.print(Panel(f"[green]Mind Map initialized at {data_dir}[/green]"))
 
     if with_ollama:
-        from mind_map.core.llm import initialize_ollama
+        from mind_map.processor.processing_llm import initialize_ollama
         initialize_ollama()
 
 
@@ -276,7 +276,7 @@ def ollama_init(
     ] = False,
 ) -> None:
     """Initialize Ollama and set up a processing model."""
-    from mind_map.core.llm import (
+    from mind_map.processor.processing_llm import (
         check_ollama_available,
         ensure_model_available,
         get_selected_model,
@@ -310,7 +310,7 @@ def ollama_init(
 @model_app.command(name="list")
 def model_list() -> None:
     """List available Ollama models."""
-    from mind_map.core.llm import list_models
+    from mind_map.processor.processing_llm import list_models
 
     list_models(show_recommended=True)
 
@@ -323,7 +323,7 @@ def model_set(
     ] = False,
 ) -> None:
     """Set the processing model to use."""
-    from mind_map.core.llm import set_processing_model
+    from mind_map.processor.processing_llm import set_processing_model
 
     set_processing_model(model_name, persist=persist)
 
@@ -331,7 +331,7 @@ def model_set(
 @model_app.command(name="get")
 def model_get() -> None:
     """Show the currently selected processing model."""
-    from mind_map.core.llm import get_selected_model
+    from mind_map.processor.processing_llm import get_selected_model
 
     model = get_selected_model()
     console.print(f"[bold]Current processing model:[/bold] {model}")
@@ -342,7 +342,7 @@ def model_pull(
     model_name: Annotated[str, typer.Argument(help="Model name to pull")],
 ) -> None:
     """Pull/download an Ollama model."""
-    from mind_map.core.llm import check_ollama_available, pull_model
+    from mind_map.processor.processing_llm import check_ollama_available, pull_model
 
     if not check_ollama_available():
         console.print("[red]Ollama is not running.[/red]")
@@ -364,7 +364,11 @@ def model_select(
     ] = False,
 ) -> None:
     """Interactively select a processing model."""
-    from mind_map.core.llm import check_ollama_available, select_model_interactive, set_processing_model
+    from mind_map.processor.processing_llm import (
+        check_ollama_available,
+        select_model_interactive,
+        set_processing_model,
+    )
 
     if not check_ollama_available():
         console.print("[red]Ollama is not running.[/red]")
@@ -395,8 +399,8 @@ def memo(
     ] = None,
 ) -> None:
     """Ingest a note or thought into the knowledge graph."""
-    from mind_map.agents.pipeline import ingest_memo
-    from mind_map.core.graph_store import GraphStore
+    from mind_map.app.pipeline import ingest_memo
+    from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
@@ -408,7 +412,7 @@ def memo(
     # Try to get LLM if requested
     llm = None
     if use_llm:
-        from mind_map.core.llm import get_processing_llm
+        from mind_map.processor.processing_llm import get_processing_llm
         llm = get_processing_llm(model_name=model)
         if not llm:
             console.print("[dim]LLM not available, using heuristic processing[/dim]")
@@ -438,9 +442,9 @@ def ask(
     ] = None,
 ) -> None:
     """Query the knowledge graph with RAG-enhanced response."""
-    from mind_map.agents.response_generator import ResponseGenerator
-    from mind_map.core.graph_store import GraphStore
-    from mind_map.core.llm import get_reasoning_llm
+    from mind_map.rag.graph_store import GraphStore
+    from mind_map.rag.reasoning_llm import get_reasoning_llm
+    from mind_map.rag.response_generator import ResponseGenerator
 
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
@@ -451,53 +455,51 @@ def ask(
 
     console.print("[yellow]Querying knowledge graph...[/yellow]")
 
-    # Retrieve relevant nodes via similarity search
+    # Step 1: Retrieve relevant context nodes (may be empty for new topics)
     nodes = store.query_similar(query, n_results=5)
 
-    if not nodes:
-        console.print(Panel("[dim]No relevant context found in knowledge graph.[/dim]"))
-        return
+    if nodes:
+        # Enrich with relation factors and re-sort by combined score
+        nodes = store.enrich_context_nodes(nodes)
+        console.print(f"[dim]Found {len(nodes)} relevant nodes[/dim]")
+    else:
+        console.print("[dim]No relevant context found — answering as new topic.[/dim]")
 
-    # Enrich with relation factors and re-sort by combined score
-    nodes = store.enrich_context_nodes(nodes)
-
-    console.print(f"[dim]Found {len(nodes)} relevant nodes[/dim]")
-
-    # Get reasoning LLM for response generation
+    # Step 2: Get reasoning LLM for response generation
     llm = get_reasoning_llm()
     if not llm:
-        console.print("[yellow]Reasoning LLM not available. Showing raw context only.[/yellow]")
-        for i, node in enumerate(nodes, 1):
-            console.print(f"[cyan][{i}][/cyan] {node.document[:200]}...")
+        console.print("[yellow]Reasoning LLM not available.[/yellow]")
+        if nodes:
+            console.print("[yellow]Showing raw context only.[/yellow]")
+            for i, node in enumerate(nodes, 1):
+                console.print(f"[cyan][{i}][/cyan] {node.document[:200]}...")
+        else:
+            console.print("[yellow]No context and no reasoning LLM. Please set up Claude CLI or configure an API key.[/yellow]")
         return
 
+    # Step 3: Generate response using ResponseGenerator (works with or without context)
     console.print("[dim]Generating response with reasoning LLM...[/dim]")
-
-    # Generate response using ResponseGenerator
     generator = ResponseGenerator(llm)
     response = generator.generate_sync(query, nodes)
 
-    # Log the Q&A exchange
     console.print(Panel(query, title="[cyan]Question[/cyan]", border_style="cyan"))
     console.print(Panel(response, title="[green]Response (LLM-A)[/green]", border_style="green"))
 
-    # --- LLM(B): interpret Q&A, extract tags/summary, persist to graph ---
-    from mind_map.agents.pipeline import ingest_memo
-    from mind_map.core.llm import get_processing_llm
-    from mind_map.models.schemas import Edge
-
-    # Update interaction timestamps on the context nodes that were used
+    # Step 4: Update interaction timestamps on context nodes that were used
     for node in nodes:
         store.update_interaction(node.id)
 
-    # Get processing LLM (LLM-B); fall back to heuristic extraction if unavailable
+    # Step 5: Process Q&A pair through LLM(B) pipeline to extract and store knowledge
+    from mind_map.app.pipeline import ingest_memo
+    from mind_map.core.schemas import Edge
+    from mind_map.processor.processing_llm import get_processing_llm
+
     processing_llm = get_processing_llm(model_name=model)
     if processing_llm:
         console.print("[dim]Summarizing Q&A with processing LLM...[/dim]")
     else:
         console.print("[dim]Processing LLM not available, using heuristic extraction...[/dim]")
 
-    # Ingest Q&A pair through the full pipeline: FilterAgent → KnowledgeProcessor → store
     qa_text = f"Q: {query}\nA: {response}"
     success, message, qa_node_ids = ingest_memo(
         text=qa_text,
@@ -506,8 +508,8 @@ def ask(
         source_id=f"qa_{query[:50]}",
     )
 
-    if success and qa_node_ids:
-        # Link the new Q&A concept node back to the context nodes it was derived from
+    # Step 6: Link Q&A nodes to context nodes if any existed
+    if success and qa_node_ids and nodes:
         qa_concept_id = qa_node_ids[0]
         for context_node in nodes:
             store.add_edge(Edge(
@@ -516,6 +518,8 @@ def ask(
                 relation_type="derived_from",
             ))
         console.print(f"[dim]Stored: {message} (linked to {len(nodes)} context nodes)[/dim]")
+    elif success and qa_node_ids:
+        console.print(f"[dim]Stored: {message}[/dim]")
     elif not success:
         console.print(f"[dim]Ingestion skipped: {message}[/dim]")
 
@@ -527,7 +531,7 @@ def stats(
     ] = Path("./data"),
 ) -> None:
     """Display knowledge graph statistics."""
-    from mind_map.core.graph_store import GraphStore
+    from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
@@ -560,7 +564,7 @@ def serve(
     import uvicorn
 
     console.print(f"[green]Starting Mind Map API server at http://{host}:{port}[/green]")
-    uvicorn.run("mind_map.api.routes:app", host=host, port=port, reload=True)
+    uvicorn.run("mind_map.app.api.routes:app", host=host, port=port, reload=True)
 
 
 if __name__ == "__main__":

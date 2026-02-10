@@ -234,7 +234,7 @@ def get_selected_model() -> str:
         return _selected_model
 
     # 2. Check config.yaml
-    from .llm import load_config
+    from mind_map.core.config import load_config
     config = load_config()
     processing_config = config.get("processing_llm", {})
     config_model = processing_config.get("model")
@@ -280,7 +280,7 @@ def set_processing_model(model_name: str, persist: bool = False) -> bool:
             with open(config_path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False)
 
-            console.print(f"[dim]Saved to config.yaml[/dim]")
+            console.print("[dim]Saved to config.yaml[/dim]")
         except Exception as e:
             console.print(f"[yellow]Warning: Could not persist to config: {e}[/yellow]")
             return False
@@ -326,8 +326,8 @@ def select_model_interactive() -> str | None:
         status_tag = f" [dim]({status})[/dim]"
         console.print(f"  [{i}] {model}{rec_tag}{status_tag}")
 
-    console.print(f"  [0] Cancel")
-    console.print(f"  [c] Enter custom model name\n")
+    console.print("  [0] Cancel")
+    console.print("  [c] Enter custom model name\n")
 
     # Get selection
     while True:
@@ -402,7 +402,7 @@ def ensure_model_available(
 
     # Determine auto_pull behavior from config if not specified
     if auto_pull is None:
-        from .llm import load_config
+        from mind_map.core.config import load_config
         config = load_config()
         processing_config = config.get("processing_llm", {})
         auto_pull = processing_config.get("auto_pull", False)
@@ -543,11 +543,28 @@ def initialize_ollama(
     return True
 
 
+def _validate_cloud_llm(llm: Any, provider_name: str) -> bool:
+    """Validate a cloud LLM by making a minimal test call.
+
+    Returns:
+        True if the LLM can make API calls, False otherwise.
+    """
+    try:
+        llm.invoke("Hi")
+        return True
+    except Exception as e:
+        console.print(f"[dim]{provider_name} validation failed: {e}[/dim]")
+        return False
+
+
 def _try_cloud_processing_llm(
     provider: str = "auto",
     temperature: float = 0.1,
 ) -> tuple[Any, str] | tuple[None, None]:
     """Try to create a cloud-based processing LLM.
+
+    Each provider is validated with a minimal test call to ensure the API key
+    is active and has sufficient credits before returning.
 
     Args:
         provider: "auto" tries all in order, or specify "gemini"/"anthropic"/"openai"
@@ -576,7 +593,9 @@ def _try_cloud_processing_llm(
                     google_api_key=api_key,
                     temperature=temperature,
                 )
-                return gemini_llm, "gemini"
+                if _validate_cloud_llm(gemini_llm, "Gemini"):
+                    return gemini_llm, "gemini"
+                continue
             except ImportError:
                 console.print("[dim]langchain-google-genai not installed, skipping Gemini[/dim]")
                 continue
@@ -595,7 +614,9 @@ def _try_cloud_processing_llm(
                     api_key=api_key,
                     temperature=temperature,
                 )
-                return anthropic_llm, "anthropic"
+                if _validate_cloud_llm(anthropic_llm, "Anthropic"):
+                    return anthropic_llm, "anthropic"
+                continue
             except ImportError:
                 console.print("[dim]langchain-anthropic not installed, skipping Anthropic[/dim]")
                 continue
@@ -614,7 +635,9 @@ def _try_cloud_processing_llm(
                     api_key=api_key,
                     temperature=temperature,
                 )
-                return openai_llm, "openai"
+                if _validate_cloud_llm(openai_llm, "OpenAI"):
+                    return openai_llm, "openai"
+                continue
             except ImportError:
                 console.print("[dim]langchain-openai not installed, skipping OpenAI[/dim]")
                 continue
@@ -642,7 +665,7 @@ def _get_ollama_processing_llm(
     Returns:
         ChatOllama instance or None if unavailable
     """
-    from .llm import load_config
+    from mind_map.core.config import load_config
 
     config = load_config()
     processing_config = config.get("processing_llm", {})
@@ -682,7 +705,7 @@ def detect_processing_provider() -> tuple[str, str]:
     Returns:
         Tuple of (provider_name, model_name) for the active processing provider.
     """
-    from .llm import load_config
+    from mind_map.core.config import load_config
 
     config = load_config()
     processing_config = config.get("processing_llm", {})
@@ -736,7 +759,7 @@ def get_processing_llm(
     Returns:
         LangChain LLM instance or None if setup failed
     """
-    from .llm import load_config
+    from mind_map.core.config import load_config
 
     config = load_config()
     processing_config = config.get("processing_llm", {})

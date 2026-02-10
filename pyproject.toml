@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "mind_map", from = "src"}]
 
 [tool.poetry.scripts]
-mind-map = "mind_map.cli.main:app"
+mind-map = "mind_map.app.cli.main:app"
 
 [tool.poetry.dependencies]
 python = "^3.11"

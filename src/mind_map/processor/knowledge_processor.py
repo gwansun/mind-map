@@ -5,7 +5,7 @@ from typing import Any
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from mind_map.models.schemas import ExtractionResult
+from mind_map.core.schemas import ExtractionResult
 
 EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """You are a knowledge extraction system for a knowledge graph.

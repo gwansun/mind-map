@@ -57,6 +57,11 @@ import { ToastService } from '../../shared/components/toast/toast.service';
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      height: 100%;
+    }
+
     .chat-container {
       display: flex;
       flex-direction: column;
@@ -89,6 +94,14 @@ import { ToastService } from '../../shared/components/toast/toast.service';
       display: flex;
       align-items: center;
       justify-content: center;
+    }
+
+    app-message-list {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
   `],
 })

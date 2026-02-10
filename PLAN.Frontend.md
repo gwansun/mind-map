@@ -46,6 +46,20 @@
 | POST | `/ask` | Query with RAG response |
 | POST | `/memo` | Ingest memo via LangGraph pipeline |
 
+## Implemented Improvements (2026-02-09)
+
+### Scrollable Chat & Inspector Panels
+Fixed the CSS height chain that prevented overflow scrolling in the Chat and Inspector panels.
+
+**Root cause**: Angular component host elements (`<app-chat-container>`, `<app-message-list>`, `<app-inspector-panel>`) had no explicit height, breaking the height constraint chain from the grid layout to the inner scrollable containers. Flex items default to `min-height: auto`, which prevents shrinking below content size.
+
+**Fix applied**:
+- **ChatContainerComponent**: Added `:host { display: block; height: 100%; }` and styled `app-message-list` as a flex child with `flex: 1; min-height: 0; display: flex; overflow: hidden;`
+- **MessageListComponent**: Changed `.message-list` from `height: 100%` to `flex: 1; min-height: 0; overflow-y: auto;`
+- **InspectorPanelComponent**: Added `:host { display: block; height: 100%; }`
+
+**Key principle**: In a flex column layout, every intermediate container needs `min-height: 0` to allow children to shrink and enable `overflow-y: auto` scrolling.
+
 ## Testing & Verification
 - **Unit Testing**: Jest for business logic and component logic.
 - **E2E Testing**: Playwright for critical user flows (dragging nodes, sending questions).

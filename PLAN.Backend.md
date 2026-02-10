@@ -47,8 +47,8 @@ To ensure the system focuses on currently relevant information while retaining "
 #### Calculation Formula:
 $$S = \left( \frac{C_{node}}{C_{max}} \right) \cdot e^{-\lambda \Delta t}$$
 
-- **$C_{node}$**: Number of connections this specific node/tag has.
-- **$C_{max}$**: The maximum number of connections any node has in the current DB (normalizes the score).
+- **$C_{node}$**: Number of connections this specific node/tag has (counted bidirectionally: source OR target).
+- **$C_{max}$**: The maximum number of connections any node has in the current DB, counted the same way as $C_{node}$ (bidirectional) to ensure $C_{node}/C_{max} \leq 1$.
 - **$e$**: Euler's number (~2.718).
 - **$\lambda$ (Lambda)**: Decay constant (e.g., 0.05). A higher value makes the importance drop faster over time.
 - **$\Delta t$**: Time elapsed since the last **Interaction** or **Activation** of this node (days/weeks).
@@ -61,7 +61,7 @@ $$S = \left( \frac{C_{node}}{C_{max}} \right) \cdot e^{-\lambda \Delta t}$$
 | Layer | Technology | Details |
 | :--- | :--- | :--- |
 | **Logic & Orchestration** | **Python** / **LangGraph** | LangGraph handles the cyclic flow (Filter -> KG Update -> RAG -> Respond). |
-| **Processing LLM (B)** | **Ollama (Phi-3.5)** | Highly efficient, small-footprint model for extraction and filtering. |
+| **Processing LLM (B)** | **Cloud APIs (auto) / Ollama (Phi-3.5) fallback** | Cloud-first with validated fallback; each provider tested before use. |
 | **Reasoning LLM (A)** | **Claude Code / GPT-4o / Gemini** | High-level reasoning for final user output. |
 | **Vector Database** | **ChromaDB** | Stores embeddings and graph metadata (node IDs, connection counts). |
 | **CLI Deployment** | **Typer** | Provides a modern, fast CLI experience with command autocompletion. |
@@ -289,6 +289,38 @@ A simple JSON or SQLite lookup to manage pure graph topology without polluting v
 - Concurrent writes to GraphStore
 - Importance recalculation on big graphs
 - Frontend rendering with 500+ nodes
+
+---
+
+## Implemented Improvements (2026-02-09)
+
+### 1. Modularized Package Structure
+Codebase split into 4 cohesive packages under `src/mind_map/`:
+- **`core/`**: `schemas.py` (Pydantic models), `config.py` (load_config) — dependency root
+- **`processor/`**: `processing_llm.py`, `filter_agent.py`, `knowledge_processor.py` — LLM-B processing
+- **`rag/`**: `graph_store.py`, `reasoning_llm.py`, `response_generator.py`, `llm_status.py` — storage + LLM-A
+- **`app/`**: `pipeline.py`, `cli/main.py`, `api/routes.py` — orchestration layer
+
+Removed: `llm.py` facade (consumers import directly), `importance.py` (unused duplicate).
+
+### 2. Processing LLM Validation & Ollama Fallback
+Cloud providers (Gemini, Anthropic, OpenAI) are now validated with a test API call during `get_processing_llm()`. If validation fails (e.g., depleted credits, invalid key), the next provider is tried, eventually falling through to Ollama. This ensures `get_processing_llm()` returns a working LLM or None.
+
+### 3. Ask Workflow Fix
+Both CLI and API `ask` commands now always call the Reasoning LLM regardless of whether context nodes were found. The flow:
+1. Search DB for context (may return empty)
+2. Reasoning LLM always generates response (with or without context)
+3. Processing LLM extracts Q&A knowledge and stores to graph
+4. Q&A nodes linked to context nodes only if context existed (no cross-topic edges)
+
+### 4. Pipeline Resilience
+Filter and extraction pipeline nodes fall back to heuristic processing when LLM calls fail at runtime (transient errors). This ensures Q&A data is always stored even if the processing LLM has intermittent failures.
+
+### 5. Importance Score Fix
+Fixed `C_max` calculation to count edges bidirectionally (matching `C_node`), preventing importance > 100%. Added `min(score, 1.0)` safety clamp.
+
+### 6. Similarity Threshold
+Added `max_distance=0.5` to `query_similar()`. Only nodes with >= 50% cosine similarity are returned. Prevents unrelated topics (e.g., Python and Cat) from being linked via `derived_from` edges.
 
 ---
 

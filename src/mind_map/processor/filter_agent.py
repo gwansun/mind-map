@@ -5,7 +5,7 @@ from typing import Any
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from mind_map.models.schemas import FilterDecision
+from mind_map.core.schemas import FilterDecision
 
 FILTER_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """You are a data quality filter for a knowledge graph system.
