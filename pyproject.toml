@@ -16,16 +16,17 @@ langchain = "^0.3"
 langchain-ollama = "^0.2"
 chromadb = "^0.5"
 typer = {extras = ["all"], version = "^0.15"}
-ollama = "^0.3"
+ollama = "^0.6"
 rich = "^13"
 pydantic = "^2"
 fastapi = "^0.115"
-uvicorn = {extras = ["standard"], version = "^0.32"}
+uvicorn = {extras = ["standard"], version = "^0.35"}
 pyyaml = "^6"
 python-dotenv = "^1"
 langchain-openai = "^0.3"
 langchain-anthropic = "^0.3"
 langchain-google-genai = "^2.0"
+fastmcp = "^2.14.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8"
