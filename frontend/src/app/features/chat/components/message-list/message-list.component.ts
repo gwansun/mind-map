@@ -60,9 +60,17 @@ import { MarkdownPipe } from './markdown.pipe';
     </div>
   `,
   styles: [`
-    .message-list {
-      flex: 1;
+    :host {
+      display: flex;
+      flex-direction: column;
       min-height: 0;
+      overflow: hidden;
+    }
+
+    .message-list {
+      flex: 1 1 0;
+      min-height: 0;
+      height: 0;
       overflow-y: auto;
       padding: var(--spacing-md);
       display: flex;
