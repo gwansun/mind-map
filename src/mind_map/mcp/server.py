@@ -2,6 +2,8 @@ import json
 import math
 import os
 import sys
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
@@ -12,9 +14,15 @@ if src_path not in sys.path:
 
 from fastmcp import FastMCP
 from mind_map.app.pipeline import ingest_memo
-from mind_map.core.schemas import NodeMetadata, NodeType
+from mind_map.core.schemas import Edge, NodeType
 from mind_map.rag.graph_store import GraphStore
-from mind_map.processor.processing_llm import get_processing_llm
+from mind_map.processor.processing_llm import (
+    check_ollama_available,
+    get_available_models,
+    get_processing_llm,
+    get_selected_model,
+)
+from mind_map.rag.llm_status import get_llm_status
 
 # Initialize FastMCP
 mcp = FastMCP("MindMap")
@@ -336,6 +344,227 @@ def mind_map_prune(workspace_id: Optional[str] = None) -> str:
         }, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def mind_map_health(workspace_id: Optional[str] = None) -> str:
+    """Run a comprehensive health check on the Mind Map system.
+
+    Checks Ollama connectivity, database connections (ChromaDB + SQLite),
+    processing LLM availability, and runs integration tests (similarity search,
+    memo ingestion, data persistence).
+
+    Args:
+        workspace_id: Unique identifier for the person or workspace (e.g., friend's name).
+    """
+    try:
+        ws = workspace_id or "default"
+        checks: dict[str, Any] = {}
+
+        # 1. Ollama connection
+        try:
+            ollama_up = check_ollama_available()
+            if ollama_up:
+                model = get_selected_model()
+                available = get_available_models()
+                model_found = model in available
+                checks["ollama_connection"] = {
+                    "status": "pass" if model_found else "fail",
+                    "model": model,
+                    "details": (
+                        "Model available" if model_found
+                        else f"Model '{model}' not found in {available}"
+                    ),
+                }
+            else:
+                checks["ollama_connection"] = {
+                    "status": "fail",
+                    "model": None,
+                    "details": "Ollama server not running",
+                }
+        except Exception as e:
+            checks["ollama_connection"] = {
+                "status": "fail",
+                "model": None,
+                "details": str(e),
+            }
+
+        # 2. ChromaDB connection
+        try:
+            current_store = get_store(workspace_id)
+            node_count = current_store.collection.count()
+            checks["chromadb_connection"] = {
+                "status": "pass",
+                "node_count": node_count,
+                "details": f"{node_count} nodes in collection",
+            }
+        except Exception as e:
+            checks["chromadb_connection"] = {
+                "status": "fail",
+                "node_count": 0,
+                "details": str(e),
+            }
+
+        # 3. SQLite connection
+        try:
+            current_store = get_store(workspace_id)
+            cursor = current_store.sqlite.execute("SELECT COUNT(*) FROM edges")
+            edge_count = cursor.fetchone()[0]
+            checks["sqlite_connection"] = {
+                "status": "pass",
+                "edge_count": edge_count,
+                "details": f"{edge_count} edges in database",
+            }
+        except Exception as e:
+            checks["sqlite_connection"] = {
+                "status": "fail",
+                "edge_count": 0,
+                "details": str(e),
+            }
+
+        # 4. Processing LLM status
+        try:
+            llm_status = get_llm_status()
+            proc = llm_status.get("processing_llm", {})
+            checks["processing_llm"] = {
+                "status": "available" if proc.get("status") == "online" else "unavailable",
+                "provider": proc.get("provider", "unknown"),
+                "model": proc.get("model", "unknown"),
+            }
+        except Exception:
+            checks["processing_llm"] = {
+                "status": "unavailable",
+                "provider": "unknown",
+                "model": "unknown",
+            }
+
+        # 5-7. Integration tests
+        integration: dict[str, Any] = {}
+
+        # 5. Similarity search
+        try:
+            current_store = get_store(workspace_id)
+            test_id = f"_health_check_{uuid.uuid4().hex[:12]}"
+            current_store.add_node(test_id, "health check similarity test node", NodeType.CONCEPT)
+            results = current_store.query_similar("health check similarity test node", n_results=1)
+            found = any(r.id == test_id for r in results)
+            current_store.delete_node(test_id)
+            integration["similarity_search"] = {
+                "status": "pass" if found else "fail",
+                "details": (
+                    "Node inserted, queried, and cleaned up" if found
+                    else "Query did not return test node"
+                ),
+            }
+        except Exception as e:
+            # Attempt cleanup
+            try:
+                current_store.delete_node(test_id)
+            except Exception:
+                pass
+            integration["similarity_search"] = {
+                "status": "fail",
+                "details": str(e),
+            }
+
+        # 6. Memo ingestion (heuristic only, no LLM cost)
+        try:
+            current_store = get_store(workspace_id)
+            test_text = "Health check memo ingestion test for Python programming concepts"
+            success, message, node_ids = ingest_memo(text=test_text, store=current_store, llm=None)
+            # Cleanup created nodes
+            for nid in node_ids:
+                current_store.delete_edges_for_node(nid)
+                current_store.delete_node(nid)
+            integration["memo_ingestion"] = {
+                "status": "pass" if success else "fail",
+                "nodes_created": len(node_ids),
+                "details": message,
+            }
+        except Exception as e:
+            integration["memo_ingestion"] = {
+                "status": "fail",
+                "nodes_created": 0,
+                "details": str(e),
+            }
+
+        # 7. Data persistence (add node → read → add edge → read edge → cleanup)
+        try:
+            current_store = get_store(workspace_id)
+            n1 = f"_health_check_{uuid.uuid4().hex[:12]}"
+            n2 = f"_health_check_{uuid.uuid4().hex[:12]}"
+            current_store.add_node(n1, "persistence test node A", NodeType.CONCEPT)
+            current_store.add_node(n2, "persistence test node B", NodeType.CONCEPT)
+
+            # Verify read-back
+            read_node = current_store.get_node(n1)
+            if read_node is None:
+                raise RuntimeError("Failed to read back node after insert")
+
+            # Add and verify edge
+            current_store.add_edge(Edge(source=n1, target=n2, relation_type="test_relation"))
+            edges = current_store.get_edges(n1)
+            edge_found = any(
+                (e.source == n1 and e.target == n2) or (e.source == n2 and e.target == n1)
+                for e in edges
+            )
+            if not edge_found:
+                raise RuntimeError("Failed to read back edge after insert")
+
+            # Cleanup
+            current_store.delete_edges_for_node(n1)
+            current_store.delete_edges_for_node(n2)
+            current_store.delete_node(n1)
+            current_store.delete_node(n2)
+
+            integration["data_persistence"] = {
+                "status": "pass",
+                "details": "Node and edge write/read/delete cycle successful",
+            }
+        except Exception as e:
+            # Attempt cleanup
+            try:
+                current_store.delete_edges_for_node(n1)
+                current_store.delete_edges_for_node(n2)
+                current_store.delete_node(n1)
+                current_store.delete_node(n2)
+            except Exception:
+                pass
+            integration["data_persistence"] = {
+                "status": "fail",
+                "details": str(e),
+            }
+
+        checks["integration_tests"] = integration
+
+        # Overall status
+        db_ok = (
+            checks.get("chromadb_connection", {}).get("status") == "pass"
+            and checks.get("sqlite_connection", {}).get("status") == "pass"
+        )
+        integration_ok = all(
+            t.get("status") == "pass" for t in integration.values()
+        )
+        llm_ok = (
+            checks.get("processing_llm", {}).get("status") == "available"
+        )
+        ollama_ok = checks.get("ollama_connection", {}).get("status") == "pass"
+
+        if db_ok and integration_ok and llm_ok and ollama_ok:
+            status = "healthy"
+        elif db_ok and integration_ok:
+            status = "degraded"
+        else:
+            status = "unhealthy"
+
+        return json.dumps({
+            "status": status,
+            "checks": checks,
+            "timestamp": time.time(),
+            "workspace": ws,
+        }, indent=2)
+    except Exception as e:
+        return json.dumps({"status": "unhealthy", "error": str(e)})
 
 
 if __name__ == "__main__":
