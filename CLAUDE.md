@@ -123,6 +123,7 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 | `mind_map_stats` | Knowledge graph statistics |
 | `mind_map_report` | JSON report with summary stats and top-5 nodes |
 | `mind_map_prune` | Prune the least important 10% of nodes |
+| `mind_map_health` | System health check (Ollama, databases, ProcessingLLM, integration tests) |
 
 ### Prune Algorithm (`mind_map_prune`)
 1. Calculate importance for all concept/entity nodes (tags excluded as direct candidates)
