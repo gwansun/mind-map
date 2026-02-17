@@ -431,6 +431,42 @@ def memo(
 
 
 @app.command()
+def retrieve(
+    query: Annotated[str, typer.Argument(help="Search query for the knowledge graph")],
+    n_results: Annotated[int, typer.Option("--n-results", "-n", help="Number of results to return")] = 5,
+    data_dir: Annotated[
+        Path, typer.Option("--data-dir", help="Directory for database storage")
+    ] = Path("./data"),
+) -> None:
+    """Retrieve relevant context from the knowledge graph (no LLM, vector search only)."""
+    from mind_map.rag.graph_store import GraphStore
+
+    if not data_dir.exists():
+        # Print to stdout (no Rich) so callers can parse output cleanly
+        print(f"No relevant information found in the knowledge graph.")
+        raise typer.Exit(0)
+
+    store = GraphStore(data_dir)
+    store.initialize()
+
+    nodes = store.query_similar(query, n_results=n_results)
+    if not nodes:
+        print(f"No relevant information found in the knowledge graph.")
+        raise typer.Exit(0)
+
+    # Enrich with relation factors and re-sort by combined score
+    nodes = store.enrich_context_nodes(nodes)
+
+    # Output plain text (machine-readable, no Rich markup)
+    lines = ["### Relevant Context from Mind Map:"]
+    for node in nodes:
+        score = node.metadata.importance_score * (1 + (node.relation_factor or 0))
+        lines.append(f"- [{node.metadata.type.value}] (Relevance: {score:.2f}): {node.document}")
+
+    print("\n".join(lines))
+
+
+@app.command()
 def ask(
     query: Annotated[str, typer.Argument(help="Question to ask the knowledge graph")],
     depth: Annotated[int, typer.Option("--depth", "-d", help="Graph traversal depth")] = 2,
