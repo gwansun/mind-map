@@ -44,6 +44,7 @@ def show_help() -> None:
     main_table.add_row("memo", "Ingest a note into the knowledge graph")
     main_table.add_row("ask", "Query the knowledge graph with RAG")
     main_table.add_row("stats", "Display knowledge graph statistics")
+    main_table.add_row("prune", "Prune least important nodes from graph")
     main_table.add_row("serve", "Start FastAPI server for frontend")
     main_table.add_row("ollama-init", "Initialize Ollama processing model")
     main_table.add_row("model", "Manage Ollama models (subcommands)")
@@ -589,6 +590,100 @@ def stats(
     table.add_row("Avg. Connections", str(data["avg_connections"]))
 
     console.print(table)
+
+
+@app.command()
+def prune(
+    data_dir: Annotated[
+        Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
+    ] = Path("./data"),
+    percent: Annotated[
+        float, typer.Option("--percent", "-p", help="Percentage of nodes to prune (0.0-1.0)")
+    ] = 0.1,
+) -> None:
+    """Prune the least important nodes from the knowledge graph."""
+    import json
+    import math
+    from mind_map.core.schemas import NodeType
+    from mind_map.rag.graph_store import GraphStore
+
+    if not data_dir.exists():
+        console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
+        raise typer.Exit(1)
+
+    store = GraphStore(data_dir)
+    store.initialize()
+
+    # 1. Get all nodes
+    all_data = store.collection.get(include=["metadatas", "documents"])
+    if not all_data["ids"]:
+        console.print("[yellow]Graph is empty, nothing to prune.[/yellow]")
+        raise typer.Exit(0)
+
+    # 2. Separate candidates (concept/entity) from tags
+    candidates: list[tuple[float, int]] = []  # (importance, index)
+    tag_indices: list[int] = []
+    for i, node_id in enumerate(all_data["ids"]):
+        meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
+        node_type = meta.get("type", "concept")
+        if node_type == NodeType.TAG.value:
+            tag_indices.append(i)
+        else:
+            importance = store.calculate_importance(node_id)
+            candidates.append((importance, i))
+
+    if not candidates:
+        console.print("[yellow]No concept or entity nodes to prune.[/yellow]")
+        raise typer.Exit(0)
+
+    # 3. Sort ascending by importance, take bottom X%
+    candidates.sort(key=lambda x: x[0])
+    prune_count = max(1, math.floor(len(candidates) * percent))
+    prune_targets = candidates[:prune_count]
+    prune_indices = {idx for _, idx in prune_targets}
+    prune_ids = {all_data["ids"][idx] for _, idx in prune_targets}
+
+    # 4. Collect neighbor tag IDs for prune targets
+    tag_neighbor_ids: set[str] = set()
+    for node_id in prune_ids:
+        edges = store.get_edges(node_id)
+        for edge in edges:
+            neighbor_id = edge.target if edge.source == node_id else edge.source
+            if neighbor_id not in prune_ids:
+                tag_neighbor_ids.add(neighbor_id)
+
+    # 5. Determine which tags to remove
+    tags_to_remove: set[str] = set()
+    for tag_id in tag_neighbor_ids:
+        tag_node = store.get_node(tag_id)
+        if not tag_node or tag_node.metadata.type != NodeType.TAG:
+            continue
+        tag_edges = store.get_edges(tag_id)
+        if not tag_edges:
+            continue
+        all_connected_to_prune = all(
+            (e.target if e.source == tag_id else e.source) in prune_ids
+            for e in tag_edges
+        )
+        if all_connected_to_prune:
+            tags_to_remove.add(tag_id)
+
+    # 6. Delete edges for all prune targets
+    total_deleted_edges = 0
+    for node_id in prune_ids:
+        total_deleted_edges += store.delete_edges_for_node(node_id)
+    for tag_id in tags_to_remove:
+        total_deleted_edges += store.delete_edges_for_node(tag_id)
+
+    # 7. Delete nodes from ChromaDB
+    for node_id in prune_ids:
+        store.delete_node(node_id)
+    for tag_id in tags_to_remove:
+        store.delete_node(tag_id)
+
+    # Output result
+    console.print(f"[green]Pruned {len(prune_ids)} node(s) and {len(tags_to_remove)} tag(s).[/green]")
+    console.print(f"[dim]Removed {total_deleted_edges} edge(s).[/dim]")
 
 
 @app.command()
