@@ -1,12 +1,17 @@
 """Graph storage wrapper combining ChromaDB (nodes) and SQLite (edges)."""
 
 import math
+import os
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
+# Disable ChromaDB telemetry before importing it
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
 import chromadb
+from chromadb.config import Settings
 
 from mind_map.core.schemas import Edge, GraphNode, NodeMetadata, NodeType
 
@@ -34,7 +39,10 @@ class GraphStore:
     def _init_chroma(self) -> None:
         """Initialize ChromaDB persistent client and collection."""
         self.chroma_path.mkdir(parents=True, exist_ok=True)
-        self._chroma_client = chromadb.PersistentClient(path=str(self.chroma_path))
+        self._chroma_client = chromadb.PersistentClient(
+            path=str(self.chroma_path),
+            settings=Settings(anonymized_telemetry=False)
+        )
         self._collection = self._chroma_client.get_or_create_collection(
             name="mind_map_nodes",
             metadata={"hnsw:space": "cosine"},
@@ -155,9 +163,10 @@ class GraphStore:
         if not result["ids"]:
             return None
 
+        metadata_dict = result["metadatas"][0] if result["metadatas"] else None
         metadata = (
-            NodeMetadata(**result["metadatas"][0])
-            if result["metadatas"]
+            NodeMetadata(**metadata_dict)
+            if metadata_dict
             else NodeMetadata(type=NodeType.CONCEPT, created_at=0, last_interaction=0)
         )
         # Handle embeddings carefully - ChromaDB returns numpy arrays
@@ -168,7 +177,7 @@ class GraphStore:
 
         return GraphNode(
             id=result["ids"][0],
-            document=result["documents"][0] if result["documents"] else "",
+            document=(result["documents"][0] if result.get("documents") and result["documents"][0] is not None else ""),
             metadata=metadata,
             embedding=embedding,
         )
@@ -249,9 +258,10 @@ class GraphStore:
             if distance > max_distance:
                 continue
 
+            metadata_dict = results["metadatas"][0][i] if results.get("metadatas") and results["metadatas"][0] else None
             metadata = (
-                NodeMetadata(**results["metadatas"][0][i])
-                if results["metadatas"]
+                NodeMetadata(**metadata_dict)
+                if metadata_dict
                 else NodeMetadata(type=NodeType.CONCEPT, created_at=0, last_interaction=0)
             )
             # Convert distance to similarity score [0.0, 1.0]
@@ -259,7 +269,7 @@ class GraphStore:
 
             node = GraphNode(
                 id=node_id,
-                document=results["documents"][0][i] if results["documents"] else "",
+                document=(results["documents"][0][i] if results.get("documents") and results["documents"][0][i] is not None else ""),
                 metadata=metadata,
             )
             nodes.append(node)

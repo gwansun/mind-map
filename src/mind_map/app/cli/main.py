@@ -1,7 +1,11 @@
 """Mind Map CLI - Typer-based command line interface."""
 
+import os
 from pathlib import Path
 from typing import Annotated
+
+# Disable ChromaDB telemetry globally
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 import typer
 from rich.console import Console
