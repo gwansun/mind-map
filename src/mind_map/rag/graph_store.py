@@ -12,6 +12,13 @@ logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 # Disable ChromaDB telemetry before importing it
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
+# OPTION 3: Explicitly monkeypatch posthog to skip capture attempts
+try:
+    import posthog
+    posthog.capture = lambda *args, **kwargs: None
+except ImportError:
+    pass
+
 import chromadb
 from chromadb.config import Settings
 

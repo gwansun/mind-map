@@ -9,6 +9,13 @@ logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 # Disable ChromaDB telemetry globally
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
+# OPTION 3: Explicitly monkeypatch posthog to skip capture attempts
+try:
+    import posthog
+    posthog.capture = lambda *args, **kwargs: None
+except ImportError:
+    pass
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
