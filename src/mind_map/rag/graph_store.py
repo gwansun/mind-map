@@ -1,26 +1,12 @@
-import logging
+"""Graph storage wrapper combining ChromaDB (nodes) and SQLite (edges)."""
+
 import math
-import os
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
-# Silence ChromaDB telemetry errors (caused by posthog version mismatch)
-logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
-
-# Disable ChromaDB telemetry before importing it
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
-
-# OPTION 3: Surgical monkeypatch for ChromaDB's internal posthog reference
-try:
-    import chromadb.telemetry.product.posthog as chroma_posthog
-    chroma_posthog.posthog = type('MockPosthog', (), {'capture': lambda *args, **kwargs: None})
-except ImportError:
-    pass
-
 import chromadb
-from chromadb.config import Settings
 
 from mind_map.core.schemas import Edge, GraphNode, NodeMetadata, NodeType
 
@@ -48,10 +34,7 @@ class GraphStore:
     def _init_chroma(self) -> None:
         """Initialize ChromaDB persistent client and collection."""
         self.chroma_path.mkdir(parents=True, exist_ok=True)
-        self._chroma_client = chromadb.PersistentClient(
-            path=str(self.chroma_path),
-            settings=Settings(anonymized_telemetry=False)
-        )
+        self._chroma_client = chromadb.PersistentClient(path=str(self.chroma_path))
         self._collection = self._chroma_client.get_or_create_collection(
             name="mind_map_nodes",
             metadata={"hnsw:space": "cosine"},

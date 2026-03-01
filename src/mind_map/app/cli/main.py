@@ -1,20 +1,7 @@
-import logging
-import os
+"""Mind Map CLI - Typer-based command line interface."""
+
 from pathlib import Path
 from typing import Annotated
-
-# Silence ChromaDB telemetry errors (caused by posthog version mismatch)
-logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
-
-# Disable ChromaDB telemetry globally
-os.environ["ANONYMIZED_TELEMETRY"] = "False"
-
-# OPTION 3: Surgical monkeypatch for ChromaDB's internal posthog reference
-try:
-    import chromadb.telemetry.product.posthog as chroma_posthog
-    chroma_posthog.posthog = type('MockPosthog', (), {'capture': lambda *args, **kwargs: None})
-except ImportError:
-    pass
 
 import typer
 from rich.console import Console
