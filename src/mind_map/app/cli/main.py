@@ -52,6 +52,7 @@ def show_help() -> None:
     main_table.add_row("serve", "Start FastAPI server for frontend")
     main_table.add_row("ollama-init", "Initialize Ollama processing model")
     main_table.add_row("model", "Manage Ollama models (subcommands)")
+    main_table.add_row("retrieve", "Perform simple vector search in graph")
     main_table.add_row("help", "Show this help message")
 
     console.print(main_table)
@@ -128,6 +129,18 @@ def show_help() -> None:
     ollama_table.add_row("--interactive", "-i", "Interactive model selection")
     ollama_table.add_row("--pull", "", "Auto-pull model if not available")
     console.print(ollama_table)
+
+    # Retrieve Command Options
+    console.print("\n[bold green]retrieve[/bold green] QUERY - Simple vector search")
+    retrieve_table = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
+    retrieve_table.add_column("Option", style="cyan", width=25)
+    retrieve_table.add_column("Short", style="dim", width=8)
+    retrieve_table.add_column("Description")
+
+    retrieve_table.add_row("QUERY", "", "Text to search for (required argument)")
+    retrieve_table.add_row("--n-results INT", "-n", "Number of results to return [default: 5]")
+    retrieve_table.add_row("--data-dir PATH", "", "Directory for database storage [default: data]")
+    console.print(retrieve_table)
 
     # Model Subcommands
     console.print("\n[bold yellow]MODEL SUBCOMMANDS[/bold yellow]")
