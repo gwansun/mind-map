@@ -14,7 +14,7 @@ python = "^3.11"
 langgraph = "^0.2"
 langchain = "^0.3"
 langchain-ollama = "^0.2"
-chromadb = "^0.5"
+chromadb = "^1.5.2"
 typer = {extras = ["all"], version = "^0.15"}
 ollama = "^0.6"
 rich = "^13"
