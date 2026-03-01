@@ -1,11 +1,13 @@
-"""Graph storage wrapper combining ChromaDB (nodes) and SQLite (edges)."""
-
+import logging
 import math
 import os
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+
+# Silence ChromaDB telemetry errors (caused by posthog version mismatch)
+logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 
 # Disable ChromaDB telemetry before importing it
 os.environ["ANONYMIZED_TELEMETRY"] = "False"

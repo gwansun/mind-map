@@ -1,8 +1,10 @@
-"""Mind Map CLI - Typer-based command line interface."""
-
+import logging
 import os
 from pathlib import Path
 from typing import Annotated
+
+# Silence ChromaDB telemetry errors (caused by posthog version mismatch)
+logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 
 # Disable ChromaDB telemetry globally
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
