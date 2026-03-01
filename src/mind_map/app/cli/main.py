@@ -9,10 +9,10 @@ logging.getLogger("chromadb.telemetry.product.posthog").disabled = True
 # Disable ChromaDB telemetry globally
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
-# OPTION 3: Explicitly monkeypatch posthog to skip capture attempts
+# OPTION 3: Surgical monkeypatch for ChromaDB's internal posthog reference
 try:
-    import posthog
-    posthog.capture = lambda *args, **kwargs: None
+    import chromadb.telemetry.product.posthog as chroma_posthog
+    chroma_posthog.posthog = type('MockPosthog', (), {'capture': lambda *args, **kwargs: None})
 except ImportError:
     pass
 
