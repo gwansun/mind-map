@@ -54,20 +54,20 @@ npm run build                         # Production build
 | Role | Provider | Default Model | Purpose |
 |------|----------|---------------|---------|
 | Processing (LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
-| Reasoning (LLM-A) | Claude CLI / Cloud APIs | sonnet | Response generation |
+| Reasoning (LLM-A) | OpenClaw Agent / Claude CLI / Cloud APIs | main | Response generation |
 
 - **Processing (LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
   - Each cloud provider is validated with a test API call before use; if validation fails (e.g., depleted credits), the next provider is tried
-  - Cloud models: `gemini-2.0-flash`, `claude-haiku-4-5-20251001`, `gpt-4o-mini`
+  - Cloud models: `gemini-2.0-flash`, `claude-haiku-4-5-20250901`, `gpt-4o-mini`
   - Ollama recommended: `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
   - Auto-pull (Ollama): disabled by default (enable in `config.yaml`)
 
-- **Reasoning (LLM-A)**: Claude CLI (default) with cloud fallbacks
-  - Priority: Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
-  - Default: `claude-cli` (uses Claude Pro subscription, no API costs)
-  - Requires: `claude` CLI installed and authenticated, OR API key in `.env`
+- **Reasoning (LLM-A)**: OpenClaw Agent (default) with Claude CLI and cloud fallbacks
+  - Priority: OpenClaw Agent → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+  - Default: `openclaw-agent` (uses configured OpenClaw agent stack)
+  - Requires: `openclaw` CLI installed, OR Claude CLI (legacy fallback), OR API keys in `.env`
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)` - balances connectivity with time decay.
 - `C_node` and `C_max` are both counted bidirectionally (source OR target) for consistency
@@ -175,10 +175,11 @@ processing_llm:
   auto_pull: false        # Auto-download Ollama models if not available
 
 reasoning_llm:
-  provider: claude-cli    # Options: claude-cli, gemini, anthropic, openai
-  model: sonnet           # For claude-cli: sonnet, opus, haiku
+  provider: openclaw-agent  # Options: openclaw-agent, claude-cli, gemini, anthropic, openai
+  model: main               # For openclaw-agent: agent name (default: main)
+                            # For claude-cli: sonnet, opus, haiku
   temperature: 0.7
-  timeout: 120            # CLI timeout in seconds
+  timeout: 120              # Agent/CLI timeout in seconds
 ```
 
 ### .env (for cloud providers)

@@ -13,10 +13,11 @@ processing_llm:
   model: phi3.5           # Ollama model (used when provider is ollama or auto-fallback)
   temperature: 0.1
 reasoning_llm:
-  provider: claude-cli  # Options: claude-cli, gemini, anthropic, openai
-  model: sonnet         # For claude-cli: sonnet, opus, haiku
+  provider: openclaw-agent  # Options: openclaw-agent, claude-cli, gemini, anthropic, openai
+  model: main              # For openclaw-agent: agent name (default: main)
+                          # For claude-cli: sonnet, opus, haiku
   temperature: 0.7
-  timeout: 120          # Timeout in seconds for CLI calls
+  timeout: 120             # Timeout in seconds for agent/CLI calls
 
 # Alternative configurations:
 # reasoning_llm:
