@@ -12,11 +12,16 @@ poetry install
 poetry run mind-map help              # Show comprehensive help
 poetry run mind-map init              # Initialize database
 poetry run mind-map init --with-ollama  # Initialize with Ollama model
+poetry run mind-map init --data-dir /path/to/db  # Initialize a custom database path
 poetry run mind-map memo "text"       # Ingest a note (uses LLM if available)
 poetry run mind-map memo "text" --no-llm  # Ingest with heuristic only
+poetry run mind-map memo "text" --data-dir /path/to/db  # Use a custom database path
 poetry run mind-map ask "query"       # Query the knowledge graph
+poetry run mind-map ask "query" --data-dir /path/to/db  # Query a custom database path
 poetry run mind-map stats             # View graph statistics
+poetry run mind-map stats --data-dir /path/to/db  # View stats for a custom database path
 poetry run mind-map serve             # Start FastAPI server
+poetry run mind-map serve --data-dir /path/to/db  # Start API server for a custom database path
 
 # Model Management
 poetry run mind-map model list        # List available Ollama models
@@ -83,11 +88,11 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 ### Main Commands
 | Command | Description |
 |---------|-------------|
-| `init` | Initialize database and configuration |
-| `memo TEXT` | Ingest a note into the knowledge graph |
-| `ask QUERY` | Query with RAG-enhanced response |
-| `stats` | Display knowledge graph statistics |
-| `serve` | Start FastAPI server |
+| `init` | Initialize database and configuration (`--data-dir` supported) |
+| `memo TEXT` | Ingest a note into the knowledge graph (`--data-dir` supported) |
+| `ask QUERY` | Query with RAG-enhanced response (`--data-dir` supported) |
+| `stats` | Display knowledge graph statistics (`--data-dir` supported) |
+| `serve` | Start FastAPI server (`--data-dir` supported) |
 | `ollama-init` | Initialize Ollama processing model |
 | `help` | Show comprehensive help with all options |
 
@@ -201,8 +206,9 @@ claude login
 
 ## Storage
 
-- **ChromaDB** (`data/chroma/`): Vector embeddings + node metadata
-- **SQLite** (`data/edges.db`): Edge registry with source, target, weight, relation_type
+- **ChromaDB** (`data/chroma/` by default): Vector embeddings + node metadata
+- **SQLite** (`data/edges.db` by default): Edge registry with source, target, weight, relation_type
+- Override the default storage root with `--data-dir /path/to/db` on supported CLI commands
 
 ## Data Flow
 

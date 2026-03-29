@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Annotated
 
+from mind_map.core.config import get_data_dir
+
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -701,13 +703,22 @@ def prune(
 
 @app.command()
 def serve(
+    data_dir: Annotated[
+        Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
+    ] = Path("./data"),
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8000,
 ) -> None:
     """Start the FastAPI server for frontend integration."""
+    import os
     import uvicorn
 
+    # Resolve data dir and propagate via env var so routes.py picks it up
+    resolved = get_data_dir(data_dir)
+    os.environ["MIND_MAP_DATA_DIR"] = str(resolved)
+
     console.print(f"[green]Starting Mind Map API server at http://{host}:{port}[/green]")
+    console.print(f"[dim]Data directory: {resolved}[/dim]")
     uvicorn.run("mind_map.app.api.routes:app", host=host, port=port, reload=True)
 
 

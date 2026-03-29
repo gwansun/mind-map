@@ -1,7 +1,5 @@
 """FastAPI routes for Mind Map API."""
 
-import os
-from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -9,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from mind_map.core.config import get_data_dir
 from mind_map.rag.graph_store import GraphStore
 
 load_dotenv()
@@ -27,10 +26,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Default data directory - can be configured via environment
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DATA_DIR = Path(os.getenv("MIND_MAP_DATA_DIR", str(PROJECT_ROOT / "data")))
 
 
 class AskRequest(BaseModel):
@@ -64,8 +59,9 @@ class MemoRequest(BaseModel):
 
 def get_store() -> GraphStore:
     """Get or initialize the graph store."""
-    store = GraphStore(DATA_DIR)
-    if not DATA_DIR.exists():
+    data_dir = get_data_dir()
+    store = GraphStore(data_dir)
+    if not data_dir.exists():
         store.initialize()
     return store
 

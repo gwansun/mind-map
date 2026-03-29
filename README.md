@@ -62,6 +62,9 @@ poetry install
 # Initialize
 poetry run mind-map init
 
+# Initialize a custom database location
+poetry run mind-map init --data-dir /path/to/mind-map-data
+
 # Add a note
 poetry run mind-map memo "Thinking about building a RAG system"
 
@@ -70,6 +73,9 @@ poetry run mind-map ask "What am I working on?"
 
 # Start API server
 poetry run mind-map serve
+
+# Start API server against a custom database location
+poetry run mind-map serve --data-dir /path/to/mind-map-data
 ```
 
 ## MCP Integration

@@ -29,3 +29,20 @@ def load_config() -> dict[str, Any]:
     except Exception as e:
         console.print(f"[yellow]Error loading config.yaml: {e}[/yellow]")
         return {}
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_DATA_DIR = Path("./data")
+
+
+def get_data_dir(explicit: Path | None = None) -> Path:
+    """Resolve the active data directory.
+
+    Priority: explicit argument -> MIND_MAP_DATA_DIR env var -> DEFAULT_DATA_DIR
+    """
+    import os
+    if explicit is not None:
+        return explicit
+    env_dir = os.getenv("MIND_MAP_DATA_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return DEFAULT_DATA_DIR
