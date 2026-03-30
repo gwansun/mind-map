@@ -21,6 +21,8 @@ Mind Map is a personal knowledge graph that accumulates context from every conve
 
 Data is stored as a graph of **nodes** (concepts, entities, tags) connected by **edges** (relationships). Unlike keyword-based retrieval, this understands *how* ideas are connected.
 
+<img width="1200" height="878" alt="demo1" src="https://github.com/user-attachments/assets/0a940eff-4941-4c1c-8aa8-cd2e0e44a3fa" />
+
 ### LangGraph Pipeline
 
 Notes flow through an orchestrated pipeline:
@@ -88,3 +90,4 @@ Mind Map exposes tools via FastMCP for agentic workflows:
 - `mind_map_prune` — Clean up low-importance nodes
 
 See [CLAUDE.md](CLAUDE.md) for full documentation.
+
