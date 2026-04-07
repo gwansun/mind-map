@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 from mind_map.core.config import get_data_dir
+from mind_map.core.schemas import Edge, GraphNode
 
 import typer
 from rich.console import Console
@@ -138,6 +139,8 @@ def show_help() -> None:
     retrieve_table.add_row("QUERY", "", "Text to search for (required argument)")
     retrieve_table.add_row("--n-results INT", "-n", "Number of results to return [default: 5]")
     retrieve_table.add_row("--data-dir PATH", "", "Directory for database storage [default: data]")
+    retrieve_table.add_row("--show-context/--no-context", "", "Show connected nodes for each result [default: True]")
+    retrieve_table.add_row("--max-context-per-node INT", "", "Maximum connected nodes to show per result [default: 3, 0 = unlimited]")
     console.print(retrieve_table)
 
     # Model Subcommands
@@ -453,6 +456,12 @@ def retrieve(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
     ] = Path("./data"),
+    show_context: Annotated[
+        bool, typer.Option("--show-context/--no-context", help="Show connected nodes for each result")
+    ] = True,
+    max_context_per_node: Annotated[
+        int, typer.Option("--max-context-per-node", help="Maximum connected nodes to show per result (0 = unlimited)")
+    ] = 3,
 ) -> None:
     """Retrieve relevant context from the knowledge graph (no LLM, vector search only)."""
     from mind_map.rag.graph_store import GraphStore
@@ -473,11 +482,25 @@ def retrieve(
     # Enrich with relation factors and re-sort by combined score
     nodes = store.enrich_context_nodes(nodes)
 
+    # Get connected context for all matched nodes
+    connected_context: dict[str, list[tuple[GraphNode, Edge]]] = {}
+    if show_context:
+        node_ids = [n.id for n in nodes]
+        connected_context = store.get_connected_context(node_ids)
+
     # Output plain text (machine-readable, no Rich markup)
     lines = ["### Relevant Context from Mind Map:"]
     for node in nodes:
         score = node.metadata.importance_score * (1 + (node.relation_factor or 0))
         lines.append(f"- [{node.metadata.type.value}] (Relevance: {score:.2f}): {node.document}")
+
+        # Add connected context if available
+        if show_context and connected_context.get(node.id):
+            neighbors = connected_context[node.id]
+            if max_context_per_node > 0:
+                neighbors = neighbors[:max_context_per_node]
+            for neighbor_node, edge in neighbors:
+                lines.append(f"  └─ related [{neighbor_node.metadata.type.value}] via {edge.relation_type}: {neighbor_node.document}")
 
     print("\n".join(lines))
 

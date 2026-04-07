@@ -186,6 +186,56 @@ class GraphStore:
             for row in cursor.fetchall()
         ]
 
+    def get_connected_context(
+        self, node_ids: list[str]
+    ) -> dict[str, list[tuple[GraphNode, Edge]]]:
+        """Get direct neighbors for each node in node_ids.
+
+        Returns a dict mapping node_id → [(connected_node, edge), ...]
+        Only returns neighbors that are NOT in node_ids (external connections only).
+        Results for each source node are sorted deterministically by:
+        1. edge weight descending
+        2. neighbor importance score descending
+        3. relation type ascending
+        4. neighbor document ascending
+        5. neighbor id ascending
+
+        Args:
+            node_ids: List of source node IDs to get connections for
+
+        Returns:
+            Dict mapping source node_id to list of (neighbor_node, edge) tuples
+        """
+        if not node_ids:
+            return {}
+
+        context: dict[str, list[tuple[GraphNode, Edge]]] = {nid: [] for nid in node_ids}
+        node_ids_set = set(node_ids)
+
+        for node_id in node_ids:
+            edges = self.get_edges(node_id)
+            for edge in edges:
+                # Get the neighbor (other end of the edge)
+                neighbor_id = edge.target if edge.source == node_id else edge.source
+                # Skip if neighbor is one of our source nodes
+                if neighbor_id in node_ids_set:
+                    continue
+                neighbor_node = self.get_node(neighbor_id)
+                if neighbor_node:
+                    context[node_id].append((neighbor_node, edge))
+
+            context[node_id].sort(
+                key=lambda item: (
+                    -item[1].weight,
+                    -(item[0].metadata.importance_score or 0.0),
+                    item[1].relation_type,
+                    item[0].document,
+                    item[0].id,
+                )
+            )
+
+        return context
+
     def get_subgraph(self, node_id: str, depth: int = 2) -> tuple[list[GraphNode], list[Edge]]:
         """Traverse the graph from a node to a specified depth."""
         visited_nodes: set[str] = set()
