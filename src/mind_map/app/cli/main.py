@@ -140,6 +140,7 @@ def show_help() -> None:
     retrieve_table.add_row("--n-results INT", "-n", "Number of results to return [default: 5]")
     retrieve_table.add_row("--data-dir PATH", "", "Directory for database storage [default: data]")
     retrieve_table.add_row("--show-context/--no-context", "", "Show connected nodes for each result [default: True]")
+    retrieve_table.add_row("--max-context-per-node INT", "", "Maximum connected nodes to show per result [default: 3, 0 = unlimited]")
     console.print(retrieve_table)
 
     # Model Subcommands
@@ -458,6 +459,9 @@ def retrieve(
     show_context: Annotated[
         bool, typer.Option("--show-context/--no-context", help="Show connected nodes for each result")
     ] = True,
+    max_context_per_node: Annotated[
+        int, typer.Option("--max-context-per-node", help="Maximum connected nodes to show per result (0 = unlimited)")
+    ] = 3,
 ) -> None:
     """Retrieve relevant context from the knowledge graph (no LLM, vector search only)."""
     from mind_map.rag.graph_store import GraphStore
@@ -492,8 +496,11 @@ def retrieve(
 
         # Add connected context if available
         if show_context and connected_context.get(node.id):
-            for neighbor_node, edge in connected_context[node.id]:
-                lines.append(f"  └─ [{neighbor_node.metadata.type.value}] (via {edge.relation_type}): {neighbor_node.document}")
+            neighbors = connected_context[node.id]
+            if max_context_per_node > 0:
+                neighbors = neighbors[:max_context_per_node]
+            for neighbor_node, edge in neighbors:
+                lines.append(f"  └─ related [{neighbor_node.metadata.type.value}] via {edge.relation_type}: {neighbor_node.document}")
 
     print("\n".join(lines))
 

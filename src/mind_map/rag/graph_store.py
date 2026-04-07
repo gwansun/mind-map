@@ -193,6 +193,12 @@ class GraphStore:
 
         Returns a dict mapping node_id → [(connected_node, edge), ...]
         Only returns neighbors that are NOT in node_ids (external connections only).
+        Results for each source node are sorted deterministically by:
+        1. edge weight descending
+        2. neighbor importance score descending
+        3. relation type ascending
+        4. neighbor document ascending
+        5. neighbor id ascending
 
         Args:
             node_ids: List of source node IDs to get connections for
@@ -217,6 +223,16 @@ class GraphStore:
                 neighbor_node = self.get_node(neighbor_id)
                 if neighbor_node:
                     context[node_id].append((neighbor_node, edge))
+
+            context[node_id].sort(
+                key=lambda item: (
+                    -item[1].weight,
+                    -(item[0].metadata.importance_score or 0.0),
+                    item[1].relation_type,
+                    item[0].document,
+                    item[0].id,
+                )
+            )
 
         return context
 

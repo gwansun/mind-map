@@ -132,6 +132,46 @@ class TestGetConnectedContext:
         relation_types = {edge.relation_type for _, edge in result["node_node_a"]}
         assert relation_types == {"mentions", "derived_from"}
 
+    def test_connected_context_sorted_deterministically(self, temp_store: GraphStore):
+        """Test connected context is sorted by weight, importance, relation, document, id."""
+        temp_store.add_node(node_id="node_anchor", document="Anchor", node_type=NodeType.CONCEPT)
+        temp_store.add_node(node_id="node_b", document="Beta", node_type=NodeType.ENTITY)
+        temp_store.add_node(node_id="node_a", document="Alpha", node_type=NodeType.ENTITY)
+        temp_store.add_node(node_id="node_c", document="Gamma", node_type=NodeType.ENTITY)
+
+        # Set explicit importance scores for deterministic secondary ordering
+        temp_store.collection.update(ids=["node_a"], metadatas=[{
+            "type": NodeType.ENTITY.value,
+            "created_at": 0.0,
+            "last_interaction": 0.0,
+            "connection_count": 0,
+            "importance_score": 0.9,
+        }])
+        temp_store.collection.update(ids=["node_b"], metadatas=[{
+            "type": NodeType.ENTITY.value,
+            "created_at": 0.0,
+            "last_interaction": 0.0,
+            "connection_count": 0,
+            "importance_score": 0.2,
+        }])
+        temp_store.collection.update(ids=["node_c"], metadatas=[{
+            "type": NodeType.ENTITY.value,
+            "created_at": 0.0,
+            "last_interaction": 0.0,
+            "connection_count": 0,
+            "importance_score": 0.9,
+        }])
+
+        temp_store.add_edge(Edge(source="node_anchor", target="node_b", weight=1.0, relation_type="mentions"))
+        temp_store.add_edge(Edge(source="node_anchor", target="node_a", weight=1.0, relation_type="mentions"))
+        temp_store.add_edge(Edge(source="node_anchor", target="node_c", weight=2.0, relation_type="mentions"))
+
+        result = temp_store.get_connected_context(["node_anchor"])
+        ordered_ids = [neighbor.id for neighbor, _ in result["node_anchor"]]
+
+        # Highest weight first => node_c, then among equal weight higher importance => node_a, then node_b
+        assert ordered_ids == ["node_c", "node_a", "node_b"]
+
 
 class TestGetEdges:
     """Tests for get_edges method."""
