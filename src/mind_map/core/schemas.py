@@ -60,6 +60,18 @@ class FilterDecision(BaseModel):
     )
 
 
+class ExistingLink(BaseModel):
+    """A link from a new concept to an existing graph node, drawn from retrieval context."""
+
+    target_id: str = Field(
+        description="ID of an existing graph node (must come from the retrieval context provided during extraction)"
+    )
+    relation_type: str = Field(
+        default="related_context",
+        description="Type of relation to the existing node",
+    )
+
+
 class ExtractionResult(BaseModel):
     """Result from knowledge extraction."""
 
@@ -68,6 +80,10 @@ class ExtractionResult(BaseModel):
     entities: list[str] = Field(default_factory=list, description="Extracted entities")
     relationships: list[tuple[str, str, str]] = Field(
         default_factory=list, description="(source, relation, target) tuples"
+    )
+    existing_links: list[ExistingLink] = Field(
+        default_factory=list,
+        description="Links from this concept to existing retrieved nodes (IDs must come from retrieval context)",
     )
 
     @field_validator("relationships", mode="before")
@@ -85,3 +101,18 @@ class QueryResult(BaseModel):
     nodes: list[GraphNode] = Field(default_factory=list, description="Retrieved nodes")
     context: str = Field(description="Synthesized context from nodes")
     response: str | None = Field(default=None, description="LLM-generated response")
+
+
+class DeleteNodeResult(BaseModel):
+    """Result of a delete operation on a node.
+
+    For concept deletes: also deletes first-layer neighbor tags and their edges.
+    For non-concept deletes: only deletes the node and its own edges.
+    """
+
+    deleted_node_id: str = Field(description="ID of the primary deleted node")
+    deleted_tag_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of tag nodes that were also deleted (concept deletes only)",
+    )
+    deleted_edges_count: int = Field(description="Total number of edges deleted across all nodes")

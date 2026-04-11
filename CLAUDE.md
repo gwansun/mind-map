@@ -13,7 +13,7 @@ poetry run mind-map help              # Show comprehensive help
 poetry run mind-map init              # Initialize database
 poetry run mind-map init --with-ollama  # Initialize with Ollama model
 poetry run mind-map init --data-dir /path/to/db  # Initialize a custom database path
-poetry run mind-map memo "text"       # Ingest a note (uses LLM if available)
+poetry run mind-map memo "text"       # Ingest a note (uses retrieval-augmented extraction if LLM available)
 poetry run mind-map memo "text" --no-llm  # Ingest with heuristic only
 poetry run mind-map memo "text" --data-dir /path/to/db  # Use a custom database path
 poetry run mind-map ask "query"       # Query the knowledge graph
@@ -48,37 +48,61 @@ npm run build                         # Production build
 
 **Knowledge Graph approach**: Data stored as nodes (concepts/tags/entities) with edges (relationships). Retrieval traverses graph clusters rather than simple keyword matching.
 
-**LangGraph Pipeline**:
+**LangGraph Ingestion Pipeline**:
 1. `FilterAgent` (LLM-B) → Keep/discard decision based on information gain
-2. `KnowledgeProcessor` (LLM-B) → Extract entities, tags, relationships, summarize
-3. `GraphStore` → Dual-write to ChromaDB (vectors) + SQLite (edges)
-4. `ResponseGenerator` (LLM-A/Claude CLI) → RAG-enhanced response synthesis
+2. `Similarity Retrieval` → Query similar existing nodes before extraction
+3. `KnowledgeProcessor` (LLM-B) → Extract summary, tags, entities, relationships, and links to existing retrieved nodes
+4. `GraphStore` → Dual-write to ChromaDB (vectors) + SQLite (edges)
+
+**Memo ingestion is now retrieval-augmented**:
+- `mind-map memo` no longer extracts from only the new memo text
+- it first retrieves top similar existing nodes from the graph
+- those retrieved nodes are passed to the extractor with their IDs and documents
+- extractor output can include `existing_links`, which are validated against retrieved IDs before storage
+- standalone extracted entities are persisted even if they do not appear in relationship tuples
+
+### Memo Extraction Chain
+
+Processing for memo extraction follows this order:
+
+1. **OpenClaw MiniMax primary path**
+   - uses local `openclaw agent --agents minimax --message "..."`
+   - prompt includes the new memo and retrieved existing node records
+2. **Configured processing LLM fallback**
+   - commonly Ollama `phi3.5`
+3. **Heuristic fallback**
+   - used when both model-backed paths fail
+
+This structure improves grounded linking while keeping ingestion resilient.
 
 **LLM Configuration**:
 
 | Role | Provider | Default Model | Purpose |
 |------|----------|---------------|---------|
-| Processing (LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
+| Processing (general LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
+| Memo extraction primary | OpenClaw agent | minimax | Retrieval-grounded memo ingestion |
+| Memo extraction fallback | Ollama / configured processing model | phi3.5 | Structured extraction fallback |
 | Reasoning (LLM-A) | OpenClaw Agent / Claude CLI / Cloud APIs | main | Response generation |
 
-- **Processing (LLM-B)**: Cloud-first with validated fallback to Ollama
+- **Processing (general LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
-  - Each cloud provider is validated with a test API call before use; if validation fails (e.g., depleted credits), the next provider is tried
+  - Each cloud provider is validated with a test API call before use; if validation fails, the next provider is tried
   - Cloud models: `gemini-2.0-flash`, `claude-haiku-4-5-20250901`, `gpt-4o-mini`
   - Ollama recommended: `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
-  - Auto-pull (Ollama): disabled by default (enable in `config.yaml`)
+  - Auto-pull (Ollama): disabled by default
 
 - **Reasoning (LLM-A)**: OpenClaw Agent (default) with Claude CLI and cloud fallbacks
   - Priority: OpenClaw Agent → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
-  - Default: `openclaw-agent` (uses configured OpenClaw agent stack)
-  - Requires: `openclaw` CLI installed, OR Claude CLI (legacy fallback), OR API keys in `.env`
+  - Default: `openclaw-agent`
 
-**Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)` - balances connectivity with time decay.
-- `C_node` and `C_max` are both counted bidirectionally (source OR target) for consistency
+**Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)`
+- `C_node` and `C_max` are both counted bidirectionally (source OR target)
 - Score is clamped to `[0.0, 1.0]`
 
-**Similarity Threshold**: `query_similar()` uses `max_distance=0.5` (cosine) to filter irrelevant results. Only nodes with >= 50% similarity are returned as context, preventing cross-topic edge pollution.
+**Similarity Threshold**:
+- `query_similar()` uses `max_distance=0.5` (cosine) to filter irrelevant results
+- memo ingestion retrieval also uses a conservative threshold so only reasonably relevant existing nodes are passed into extraction
 
 **Relation Factor**: Context nodes are weighted by edge density to the most query-relevant node.
 Combined score: `importance * (1 + relation_factor)` where `relation_factor = edges_between(anchor, node) / total_edges(anchor)`.
@@ -89,7 +113,7 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 | Command | Description |
 |---------|-------------|
 | `init` | Initialize database and configuration (`--data-dir` supported) |
-| `memo TEXT` | Ingest a note into the knowledge graph (`--data-dir` supported) |
+| `memo TEXT` | Ingest a note into the knowledge graph with retrieval-augmented extraction (`--data-dir` supported) |
 | `ask QUERY` | Query with RAG-enhanced response (`--data-dir` supported) |
 | `stats` | Display knowledge graph statistics (`--data-dir` supported) |
 | `serve` | Start FastAPI server (`--data-dir` supported) |
@@ -115,7 +139,7 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 | GET | `/node/{id}` | Node details with edges |
 | GET | `/stats` | Graph statistics |
 | POST | `/ask` | Query with RAG response |
-| POST | `/memo` | Ingest memo via LangGraph pipeline |
+| POST | `/memo` | Ingest memo via LangGraph retrieval-augmented pipeline |
 
 ## MCP Tools
 
@@ -124,7 +148,7 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 | Tool | Description |
 |------|-------------|
 | `mind_map_retrieve` | Similarity search with relation-factor enrichment |
-| `mind_map_memo` | Ingest text through the LangGraph pipeline |
+| `mind_map_memo` | Ingest text through the retrieval-augmented LangGraph pipeline |
 | `mind_map_stats` | Knowledge graph statistics |
 | `mind_map_report` | JSON report with summary stats and top-5 nodes |
 | `mind_map_prune` | Prune the least important 10% of nodes |
@@ -140,13 +164,13 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 ## Key Files
 
 ### Core (shared types & config)
-- `src/mind_map/core/schemas.py` - Pydantic models (GraphNode, Edge, FilterDecision, ExtractionResult)
-- `src/mind_map/core/config.py` - Configuration loader (config.yaml, .env)
+- `src/mind_map/core/schemas.py` - Pydantic models including `ExistingLink` and extraction schema
+- `src/mind_map/core/config.py` - Configuration loader (`config.yaml`, `.env`)
 
 ### Processor (LLM-B)
 - `src/mind_map/processor/processing_llm.py` - Multi-provider processing LLM: Cloud APIs + Ollama
 - `src/mind_map/processor/filter_agent.py` - FilterAgent for keep/discard decisions
-- `src/mind_map/processor/knowledge_processor.py` - KnowledgeProcessor for entity extraction
+- `src/mind_map/processor/knowledge_processor.py` - KnowledgeProcessor for retrieval-aware extraction with OpenClaw MiniMax primary path
 
 ### RAG (storage & reasoning)
 - `src/mind_map/rag/graph_store.py` - Hybrid ChromaDB + SQLite storage
@@ -158,7 +182,7 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 - `src/mind_map/mcp/server.py` - FastMCP server with retrieve, memo, stats, report, prune tools
 
 ### App (orchestration, CLI, API)
-- `src/mind_map/app/pipeline.py` - LangGraph ingestion pipeline
+- `src/mind_map/app/pipeline.py` - LangGraph ingestion pipeline with retrieval before extraction
 - `src/mind_map/app/cli/main.py` - Typer CLI entry point with all commands
 - `src/mind_map/app/api/routes.py` - FastAPI endpoints for frontend
 
@@ -174,34 +198,23 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 ### config.yaml
 ```yaml
 processing_llm:
-  provider: auto          # auto | gemini | anthropic | openai | ollama
-  model: phi3.5           # Ollama model (used when provider is ollama or auto-fallback)
+  provider: auto
+  model: phi3.5
   temperature: 0.1
-  auto_pull: false        # Auto-download Ollama models if not available
+  auto_pull: false
 
 reasoning_llm:
-  provider: openclaw-agent  # Options: openclaw-agent, claude-cli, gemini, anthropic, openai
-  model: main               # For openclaw-agent: agent name (default: main)
-                            # For claude-cli: sonnet, opus, haiku
+  provider: openclaw-agent
+  model: main
   temperature: 0.7
-  timeout: 120              # Agent/CLI timeout in seconds
+  timeout: 120
 ```
 
-### .env (for cloud providers)
-```
-GOOGLE_API_KEY=your-key      # Gemini API (processing + reasoning fallback)
-ANTHROPIC_API_KEY=your-key   # Claude API (processing + reasoning fallback)
-OPENAI_API_KEY=your-key      # GPT API (processing + reasoning fallback)
-# Note: Claude CLI uses your Claude Pro subscription - no API key needed
-```
-
-### Claude CLI Setup
+### .env
 ```bash
-# Install Claude CLI
-npm install -g @anthropic-ai/claude-code
-
-# Authenticate
-claude login
+GOOGLE_API_KEY=your-key
+ANTHROPIC_API_KEY=your-key
+OPENAI_API_KEY=your-key
 ```
 
 ## Storage
@@ -212,33 +225,37 @@ claude login
 
 ## Data Flow
 
-### Ingestion (memo command)
-```
-Text Input → FilterAgent → KnowledgeProcessor → GraphStore
-                ↓                  ↓                ↓
-           keep/discard    tags, entities,    ChromaDB + SQLite
-                           relationships
+### Ingestion (`memo` command)
+```text
+Text Input
+  → FilterAgent
+  → Similarity Retrieval (top relevant existing nodes)
+  → KnowledgeProcessor
+      - OpenClaw MiniMax primary
+      - processing LLM fallback
+      - heuristic fallback
+  → GraphStore
+      - concept node
+      - tag edges
+      - entity mentions edges
+      - relationship edges
+      - validated existing_links edges
 ```
 
-### Query (ask command)
-```
+### Query (`ask` command)
+```text
 Query → ChromaDB Search (max_distance=0.5) → Enrich (relation factor) → ResponseGenerator → Response
-              ↓                                       ↓                         ↓                ↓
-        Similar nodes                          Re-sort by combined        RAG synthesis    Q&A pair → FilterAgent → KnowledgeProcessor → GraphStore
-        (filtered by                           importance + edge          (always runs,          ↓                  ↓                ↓
-         similarity threshold)                 density to anchor           even if no        keep/discard    tags, entities,    ChromaDB + SQLite
-                                                                           context found)                   relationships      (enriches future queries)
 ```
 - Reasoning LLM always generates a response, even for new topics with no context
 - Processing LLM pipeline has heuristic fallback if LLM calls fail at runtime
-- Q&A nodes are only linked to context nodes if context was found (no cross-topic edges)
+- `ask` still uses its current linking flow and is separate from the new memo-ingestion `existing_links` behavior
 
 ## Frontend Architecture
 
 **Framework**: Angular 18+ with standalone components and Signals for reactivity.
 
 **Project Structure**:
-```
+```text
 frontend/
 ├── src/app/
 │   ├── core/           # ApiService, ErrorInterceptor
@@ -255,7 +272,7 @@ frontend/
 - Node types visually distinguished: Concept (large/purple), Entity (medium/green), Tag (small/yellow)
 - Real-time graph refresh after mutations
 - Markdown rendering in chat responses
-- Scrollable chat and inspector panels (flex chain with `min-height: 0` at each level)
+- Scrollable chat and inspector panels
 - HTTP caching with configurable TTLs
 - Error handling with toast notifications
 - Responsive design (desktop/tablet/mobile)
