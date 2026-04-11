@@ -49,3 +49,5 @@ htmlcov/
 
 # mypy
 .mypy_cache/
+e2e/node_modules/
+e2e/test-results/
