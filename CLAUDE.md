@@ -54,7 +54,7 @@ npm run build                         # Production build
 3. `KnowledgeProcessor` (LLM-B) → Extract summary, tags, entities, relationships, and links to existing retrieved nodes
 4. `GraphStore` → Dual-write to ChromaDB (vectors) + SQLite (edges)
 
-**Memo ingestion is now retrieval-augmented**:
+**Memo ingestion is retrieval-augmented**:
 - `mind-map memo` no longer extracts from only the new memo text
 - it first retrieves top similar existing nodes from the graph
 - those retrieved nodes are passed to the extractor with their IDs and documents
@@ -66,14 +66,34 @@ npm run build                         # Production build
 Processing for memo extraction follows this order:
 
 1. **OpenClaw MiniMax primary path**
-   - uses local `openclaw agent --agents minimax --message "..."`
-   - prompt includes the new memo and retrieved existing node records
+   - uses local `openclaw agent --agent minimax --message "..."`
+   - prompt is intentionally short and strict, with a **JSON-only** response contract
+   - timeout is currently `60` seconds
 2. **Configured processing LLM fallback**
    - commonly Ollama `phi3.5`
 3. **Heuristic fallback**
    - used when both model-backed paths fail
 
 This structure improves grounded linking while keeping ingestion resilient.
+
+### Prompting Notes for `knowledge_processor.py`
+
+Recent extraction prompt changes:
+- switched from a long explanatory prompt to a shorter **JSON-only** prompt
+- base prompt now explicitly forbids prose, markdown, explanation, and greetings
+- retrieval-context prompt now says `EXTRACT JSON` and focuses on required keys + allowed existing IDs
+- retrieval context is compacted:
+  - max 10 retrieved nodes
+  - each node snippet trimmed to 150 chars
+  - empty context marker is now `(none)`
+- the goal of the prompt simplification is to reduce conversational / non-JSON MiniMax replies when invoked through OpenClaw CLI
+
+### MiniMax CLI Integration Notes
+
+- correct CLI usage is `openclaw agent --agent minimax --message "..."`
+- do **not** use `--agents`; that was incorrect and breaks the primary extractor
+- `knowledge_processor.py` currently calls MiniMax through `subprocess.run(...)`
+- JSON is parsed first directly, then with a regex fallback to tolerate wrapper text
 
 **LLM Configuration**:
 

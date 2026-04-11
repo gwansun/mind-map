@@ -119,7 +119,7 @@ export class ApiService {
       return of(cache.data);
     }
 
-    return this.http.get<NodeDetailResponse>(`${this.baseUrl}/node/${nodeId}`).pipe(
+    return this.http.get<NodeDetailResponse>(`${this.baseUrl}/node/${encodeURIComponent(nodeId)}`).pipe(
       tap((data) => {
         this.nodeCache.set(nodeId, { data, timestamp: now });
       }),
@@ -167,6 +167,30 @@ export class ApiService {
       }),
       catchError((error) => {
         this.isAddingMemo.set(false);
+        this.lastError.set(this.extractErrorMessage(error));
+        throw error;
+      })
+    );
+  }
+
+  /**
+   * Delete a node from the knowledge graph.
+   *
+   * Concept deletes may also cascade-delete first-layer tag nodes.
+   */
+  deleteNode(nodeId: string): Observable<{ node_id: string; deleted_tag_ids: string[]; deleted_edges_count: number }> {
+    this.lastError.set(null);
+
+    return this.http.delete<{ node_id: string; deleted_tag_ids: string[]; deleted_edges_count: number }>(
+      `${this.baseUrl}/node/${encodeURIComponent(nodeId)}`
+    ).pipe(
+      tap(() => {
+        // Invalidate caches as graph structure has changed
+        this.invalidateGraphCache();
+        this.invalidateStatsCache();
+        this.invalidateNodeCache(nodeId);
+      }),
+      catchError((error) => {
         this.lastError.set(this.extractErrorMessage(error));
         throw error;
       })

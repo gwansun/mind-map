@@ -35,6 +35,7 @@ import { ToastComponent } from './shared';
             [node]="selectedNode"
             (close)="graphService.clearSelection()"
             (selectNode)="onSelectNode($event)"
+            (deleted)="onNodeDeleted($event)"
           ></app-inspector-panel>
         </aside>
       }
@@ -148,5 +149,11 @@ export class AppComponent {
     this.graphService.selectNode(nodeId);
     // Center on the node in the graph
     this.graphContainer?.canvas?.centerOnNode(nodeId);
+  }
+
+  onNodeDeleted(_nodeId: string): void {
+    // Clear selection (closes inspector) and refresh the graph
+    this.graphService.clearSelection();
+    this.graphService.loadGraph(true);
   }
 }

@@ -8,7 +8,7 @@ from typing import Any
 
 import chromadb
 
-from mind_map.core.schemas import Edge, GraphNode, NodeMetadata, NodeType
+from mind_map.core.schemas import DeleteNodeResult, Edge, GraphNode, NodeMetadata, NodeType
 
 
 class GraphStore:
@@ -42,7 +42,7 @@ class GraphStore:
 
     def _init_sqlite(self) -> None:
         """Initialize SQLite database for edge registry."""
-        self._sqlite_conn = sqlite3.connect(str(self.sqlite_path))
+        self._sqlite_conn = sqlite3.connect(str(self.sqlite_path), check_same_thread=False)
         self._sqlite_conn.execute("""
             CREATE TABLE IF NOT EXISTS edges (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,9 +149,14 @@ class GraphStore:
 
     def get_node(self, node_id: str) -> GraphNode | None:
         """Retrieve a node by ID."""
-        result = self.collection.get(
-            ids=[node_id], include=["documents", "metadatas", "embeddings"]
-        )
+        try:
+            result = self.collection.get(
+                ids=[node_id], include=["documents", "metadatas", "embeddings"]
+            )
+        except Exception:
+            # ChromaDB can return InternalError for IDs that exist in batch queries
+            # but fail individually (data inconsistency). Treat as missing.
+            return None
         if not result["ids"]:
             return None
 
@@ -425,9 +430,102 @@ class GraphStore:
         score = (c_node / c_max) * math.exp(-lambda_decay * delta_t)
         return min(score, 1.0)
 
-    def delete_node(self, node_id: str) -> None:
-        """Delete a node from ChromaDB."""
+    def delete_node(self, node_id: str) -> DeleteNodeResult:
+        """Delete a node with type-aware cascade behavior.
+
+        - Concept deletes: also delete all directly-connected first-layer neighbor
+          nodes whose type is TAG. Those tags are deleted even if shared with other
+          nodes. All edges attached to the deleted tags are also removed.
+        - Non-concept deletes (tag/entity): only delete the node and its own edges,
+          preserving current behavior.
+
+        First-layer means direct neighbors only — no recursion beyond one hop.
+        Uses neighbor node type == TAG, not relation_type filtering.
+
+        Args:
+            node_id: The ID of the primary node to delete.
+
+        Returns:
+            DeleteNodeResult with deleted primary node id, deleted tag ids (for
+            concept deletes), and total edges deleted count.
+        """
+        # Load the node to determine its type
+        node = self.get_node(node_id)
+        if node is None:
+            # Return a result consistent with "nothing found" — caller should
+            # already have raised 404; this method always succeeds structurally.
+            return DeleteNodeResult(deleted_node_id=node_id, deleted_tag_ids=[], deleted_edges_count=0)
+
+        if node.metadata.type == NodeType.CONCEPT:
+            return self._delete_concept_with_tags(node_id)
+        else:
+            edges_deleted = self.delete_node_with_edges(node_id)
+            return DeleteNodeResult(
+                deleted_node_id=node_id,
+                deleted_tag_ids=[],
+                deleted_edges_count=edges_deleted,
+            )
+
+    def _delete_concept_with_tags(self, node_id: str) -> DeleteNodeResult:
+        """Delete a concept node and all its first-layer tag neighbors.
+
+        Collects direct neighbors that are TAG nodes, deletes all edges for the
+        primary node and those tags, then deletes both the primary node and the
+        collected tag nodes from Chroma.
+        """
+        # Collect first-layer neighbors that are tags
+        tag_ids_to_delete: list[str] = []
+        edges = self.get_edges(node_id)
+        for edge in edges:
+            neighbor_id = edge.target if edge.source == node_id else edge.source
+            neighbor = self.get_node(neighbor_id)
+            if neighbor is not None and neighbor.metadata.type == NodeType.TAG:
+                tag_ids_to_delete.append(neighbor_id)
+
+        # Pre-count ALL edges before deleting any, to avoid undercounting
+        # (edges shared with concept would be gone by the time we check tags)
+        all_node_ids = [node_id] + tag_ids_to_delete
+        edge_count = 0
+        for nid in all_node_ids:
+            cursor = self.sqlite.execute(
+                "SELECT COUNT(*) FROM edges WHERE source = ? OR target = ?",
+                (nid, nid),
+            )
+            edge_count += cursor.fetchone()[0]
+
+        # Now actually delete all edges for all nodes (this updates neighbor counts)
+        for nid in all_node_ids:
+            self.delete_edges_for_node(nid)
+
+        # Delete all nodes from Chroma
+        if tag_ids_to_delete:
+            self.collection.delete(ids=tag_ids_to_delete)
         self.collection.delete(ids=[node_id])
+
+        return DeleteNodeResult(
+            deleted_node_id=node_id,
+            deleted_tag_ids=tag_ids_to_delete,
+            deleted_edges_count=edge_count,
+        )
+
+    def delete_node_with_edges(self, node_id: str) -> int:
+        """Delete a node and all its connected edges.
+
+        This is the canonical delete operation: it removes the node from ChromaDB
+        and cascade-deletes all edges involving that node from SQLite.
+        Neighbor connection counts are updated after deletion.
+
+        Args:
+            node_id: The ID of the node to delete.
+
+        Returns:
+            Number of edges deleted.
+        """
+        # First delete all edges (this also updates neighbor counts)
+        edges_deleted = self.delete_edges_for_node(node_id)
+        # Then delete the node itself from ChromaDB
+        self.collection.delete(ids=[node_id])
+        return edges_deleted
 
     def delete_edges_for_node(self, node_id: str) -> int:
         """Delete all edges connected to a node and update neighbor connection counts.

@@ -28,7 +28,7 @@ Data is stored as a graph of **nodes** (concepts, entities, tags) connected by *
 
 Notes flow through an orchestrated pipeline:
 
-```
+```text
 FilterAgent → Similarity Retrieval → KnowledgeProcessor → GraphStore
 ```
 
@@ -39,7 +39,7 @@ FilterAgent → Similarity Retrieval → KnowledgeProcessor → GraphStore
 
 ### Memo Ingestion Workflow
 
-When `mind-map memo "..."` runs, the backend now performs retrieval-augmented ingestion:
+When `mind-map memo "..."` runs, the backend performs retrieval-augmented ingestion:
 
 1. Filter the incoming memo
 2. Run similarity search against existing graph nodes
@@ -58,15 +58,19 @@ This fixes a prior limitation where memo ingestion only saw the new text and cou
 
 Memo extraction now uses this processor order:
 
-1. **Primary** — OpenClaw MiniMax via local `openclaw agent --agents minimax`
+1. **Primary** — OpenClaw MiniMax via local `openclaw agent --agent minimax`
 2. **Fallback** — configured processing LLM, commonly Ollama `phi3.5`
 3. **Final fallback** — heuristic extraction
 
-Only node IDs supplied from retrieval context are allowed to become `existing_links`, which prevents arbitrary hallucinated graph links.
+Notes on the current primary path:
+- the OpenClaw CLI flag is `--agent`, not `--agents`
+- the MiniMax prompt was simplified into a **JSON-only** format to reduce chatty / prose responses and improve structured extraction reliability
+- the primary extraction timeout is currently **60 seconds**
+- only node IDs supplied from retrieval context are allowed to become `existing_links`, which prevents arbitrary hallucinated graph links
 
 ### Importance Scoring
 
-```
+```text
 S = (C_node / C_max) * e^(-λ * Δt)
 ```
 

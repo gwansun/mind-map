@@ -122,7 +122,7 @@ async def get_graph() -> GraphResponse:
     return GraphResponse(nodes=nodes, edges=edges)
 
 
-@app.get("/node/{node_id}")
+@app.get("/node/{node_id:path}")
 async def get_node(node_id: str) -> dict[str, Any]:
     """Get detailed view of a specific node."""
     store = get_store()
@@ -139,6 +139,46 @@ async def get_node(node_id: str) -> dict[str, Any]:
         "edges": [e.model_dump() for e in edges],
         "importance_score": importance,
     }
+
+
+class DeleteNodeResponse(BaseModel):
+    """Response body for node deletion.
+
+    For concept deletes, also returns the list of tag node IDs that were
+    cascade-deleted. For non-concept deletes, deleted_tag_ids is empty.
+    """
+
+    node_id: str
+    deleted_tag_ids: list[str] = []
+    deleted_edges_count: int
+
+
+@app.delete("/node/{node_id:path}", response_model=DeleteNodeResponse)
+async def delete_node(node_id: str) -> DeleteNodeResponse:
+    """Delete a node and all its connected edges.
+
+    For concept nodes: also deletes all directly-connected first-layer neighbor
+    tags, even if those tags are shared with other nodes. All edges attached to
+    deleted tags are removed as well.
+
+    For non-concept nodes (tag/entity): deletes only the node and its own edges,
+    preserving existing behavior.
+
+    Raises 404 if the primary node is not found.
+    """
+    store = get_store()
+    node = store.get_node(node_id)
+
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    result = store.delete_node(node_id)
+
+    return DeleteNodeResponse(
+        node_id=result.deleted_node_id,
+        deleted_tag_ids=result.deleted_tag_ids,
+        deleted_edges_count=result.deleted_edges_count,
+    )
 
 
 @app.post("/ask", response_model=AskResponse)

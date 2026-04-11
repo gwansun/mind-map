@@ -4,7 +4,6 @@ import {
   Output,
   EventEmitter,
   signal,
-  effect,
   inject,
   ChangeDetectionStrategy,
 } from '@angular/core';
@@ -36,13 +35,54 @@ import { LoadingSpinnerComponent } from '../../shared';
         <div class="inspector-empty">
           <p>Select a node to view details</p>
         </div>
+      } @else if (showDeleteConfirm()) {
+        <div class="delete-confirm">
+          <p class="delete-confirm__message">
+            Delete <strong>"{{ truncatedDoc() }}"</strong>?
+            This will also remove its {{ edges().length }} connection{{ edges().length === 1 ? '' : 's' }}.
+          </p>
+          <div class="delete-confirm__actions">
+            <button
+              class="btn btn--ghost"
+              (click)="cancelDelete()"
+              [disabled]="isDeleting()"
+            >
+              Cancel
+            </button>
+            <button
+              class="btn btn--danger"
+              (click)="executeDelete()"
+              [disabled]="isDeleting()"
+            >
+              @if (isDeleting()) {
+                Deleting...
+              } @else {
+                Delete
+              }
+            </button>
+          </div>
+        </div>
       } @else {
         @if (isLoading()) {
           <app-loading-spinner message="Loading details..."></app-loading-spinner>
         } @else {
           <div class="inspector-content">
-            <div class="node-type-badge" [class]="'node-type-badge--' + node.metadata.type">
-              {{ getTypeLabel(node.metadata.type) }}
+            <div class="inspector-top-row">
+              <div class="node-type-badge" [class]="'node-type-badge--' + node.metadata.type">
+                {{ getTypeLabel(node.metadata.type) }}
+              </div>
+              <button
+                class="btn btn--danger btn--sm"
+                (click)="confirmDelete()"
+                title="Delete node"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <polyline points="3,6 5,6 21,6"/>
+                  <path d="M19,6 L19,20 C19,21.1 18.1,22 17,22 L7,22 C5.9,22 5,21.1 5,20 L5,6"/>
+                  <path d="M8,6 L8,4 C8,2.9 8.9,2 10,2 L14,2 C15.1,2 16,2.9 16,4 L16,6"/>
+                </svg>
+                Delete
+              </button>
             </div>
 
             <section class="inspector-section">
@@ -150,6 +190,13 @@ import { LoadingSpinnerComponent } from '../../shared';
       padding: var(--spacing-md);
     }
 
+    .inspector-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--spacing-md);
+    }
+
     .node-type-badge {
       display: inline-block;
       padding: var(--spacing-xs) var(--spacing-sm);
@@ -157,7 +204,6 @@ import { LoadingSpinnerComponent } from '../../shared';
       font-size: 11px;
       font-weight: 600;
       text-transform: uppercase;
-      margin-bottom: var(--spacing-md);
 
       &--concept {
         background: rgba(99, 102, 241, 0.2);
@@ -290,6 +336,57 @@ import { LoadingSpinnerComponent } from '../../shared';
       text-align: center;
       padding: var(--spacing-xs);
     }
+
+    /* Delete confirmation */
+    .delete-confirm {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: var(--spacing-lg);
+      padding: var(--spacing-lg);
+      text-align: center;
+
+      &__message {
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--color-text-primary);
+
+        strong {
+          color: var(--color-danger);
+        }
+      }
+
+      &__actions {
+        display: flex;
+        justify-content: center;
+        gap: var(--spacing-md);
+      }
+    }
+
+    .btn--danger {
+      background: var(--color-danger);
+      color: white;
+      border-color: var(--color-danger);
+
+      &:hover:not(:disabled) {
+        background: #c0392b;
+        border-color: #c0392b;
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+
+    .btn--sm {
+      font-size: 12px;
+      padding: var(--spacing-xs) var(--spacing-sm);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+    }
   `],
 })
 export class InspectorPanelComponent {
@@ -302,6 +399,7 @@ export class InspectorPanelComponent {
     } else {
       this.edges.set([]);
       this.importanceScore.set(0);
+      this.showDeleteConfirm.set(false);
     }
   }
   get node(): D3Node | null {
@@ -310,12 +408,21 @@ export class InspectorPanelComponent {
 
   @Output() close = new EventEmitter<void>();
   @Output() selectNode = new EventEmitter<string>();
+  @Output() deleted = new EventEmitter<string>();
 
   private _node: D3Node | null = null;
 
   readonly isLoading = signal(false);
+  readonly isDeleting = signal(false);
   readonly edges = signal<Edge[]>([]);
   readonly importanceScore = signal(0);
+  readonly showDeleteConfirm = signal(false);
+
+  truncatedDoc(): string {
+    if (!this.node) return '';
+    const doc = this.node.document;
+    return doc.length > 50 ? doc.substring(0, 50) + '…' : doc;
+  }
 
   private async loadNodeDetails(nodeId: string): Promise<void> {
     this.isLoading.set(true);
@@ -329,6 +436,28 @@ export class InspectorPanelComponent {
       console.error('Failed to load node details:', error);
     } finally {
       this.isLoading.set(false);
+    }
+  }
+
+  confirmDelete(): void {
+    this.showDeleteConfirm.set(true);
+  }
+
+  cancelDelete(): void {
+    this.showDeleteConfirm.set(false);
+  }
+
+  async executeDelete(): Promise<void> {
+    if (!this.node) return;
+
+    this.isDeleting.set(true);
+    try {
+      await this.apiService.deleteNode(this.node.id).toPromise();
+      this.deleted.emit(this.node.id);
+    } catch (error) {
+      console.error('Failed to delete node:', error);
+      this.isDeleting.set(false);
+      this.showDeleteConfirm.set(false);
     }
   }
 

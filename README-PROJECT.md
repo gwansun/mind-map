@@ -146,8 +146,10 @@ Only IDs supplied through retrieval context are allowed to become stored links.
 Memo extraction now uses a layered fallback strategy:
 
 1. **Primary**: OpenClaw MiniMax
-   - invoked through local OpenClaw CLI
-   - designed to do the best structured extraction with retrieved context
+   - invoked through local OpenClaw CLI with:
+     - `openclaw agent --agent minimax --message "..."`
+   - uses a compact **JSON-only** prompt to reduce conversational / prose replies
+   - current timeout is **60 seconds**
 2. **Fallback**: configured processing LLM
    - typically Ollama `phi3.5`
 3. **Final fallback**: heuristic extraction
@@ -155,6 +157,27 @@ Memo extraction now uses a layered fallback strategy:
    - capitalized words become entities
 
 This keeps memo ingestion resilient even if the preferred model path fails.
+
+#### Prompting change summary
+
+The extraction prompts were tightened to improve reliability:
+
+- changed from a long explanatory prompt to a shorter strict format
+- base prompt now explicitly says:
+  - respond with **only raw JSON**
+  - no prose
+  - no markdown
+  - no explanation
+  - no greeting
+- retrieval-context prompt now says `EXTRACT JSON` and focuses on:
+  - required keys
+  - existing node IDs allowed for linking
+- retrieval context is compacted:
+  - up to 10 nodes
+  - each snippet trimmed to 150 chars
+  - empty retrieval marker is `(none)`
+
+This was done because the MiniMax path was more reliable with a shorter, stricter structured-output contract.
 
 ---
 
@@ -357,10 +380,10 @@ When used inside the OpenClaw workspace, the active production-like data directo
 Examples:
 
 ```bash
-mind-map stats -d /Users/gwansun/.openclaw/workspace/projects/mind-map/data
-mind-map memo "note" -d /Users/gwansun/.openclaw/workspace/projects/mind-map/data
-mind-map ask "query" -d /Users/gwansun/.openclaw/workspace/projects/mind-map/data
-mind-map serve -d /Users/gwansun/.openclaw/workspace/projects/mind-map/data
+mind-map stats --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
+mind-map memo "note" --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
+mind-map ask "query" --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
+mind-map serve --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
 ```
 
 ### Backend restart path used in recent work
@@ -392,6 +415,9 @@ Recent backend and docs changes now reflected in project documentation:
 - validated links against retrieved node IDs only
 - fixed standalone entity persistence
 - changed memo extraction primary path to OpenClaw MiniMax
+- corrected the OpenClaw CLI flag from `--agents` to `--agent`
+- simplified the MiniMax extraction prompt into a short JSON-only contract
+- increased MiniMax extraction timeout from `40` to `60` seconds
 - kept processing LLM fallback, usually Ollama `phi3.5`
 - restored conservative retrieval threshold
 - refreshed installed CLI with `uv tool install --reinstall`

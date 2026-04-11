@@ -118,7 +118,7 @@ A simple JSON or SQLite lookup to manage pure graph topology without polluting v
 ```
 ---
 
-## �🚀 Implementation Roadmap
+## 🚀 Implementation Roadmap
 
 ### 1. Backend & CLI (Phase 1)
 - **Project Initialization**:
@@ -158,6 +158,7 @@ A simple JSON or SQLite lookup to manage pure graph topology without polluting v
         - `GET /graph`: Fetch full/partial graph for rendering.
         - `GET /node/{id}`: Detailed view of a node.
         - `POST /ask`: Chat endpoint.
+        - `DELETE /node/{id}`: Delete a node with cascade semantics defined by node type.
 - **Angular Components**:
     - **GraphVisualizer**: D3 Force Directed Graph with zoom/pan and node click handling.
     - **InspectorPanel**: Sidebar to show Node summary, importance score, and tags.
@@ -228,6 +229,57 @@ A simple JSON or SQLite lookup to manage pure graph topology without polluting v
 **Alternative Considered**: React + Cytoscape.js
 - Both viable; Angular chosen for Signals and built-in dependency injection
 
+### Delete Semantics: Concept-Owned First-Layer Tags
+**Decision**: Deleting a `concept` node will also delete all directly connected first-layer `tag` nodes, even if those tags are shared by other concepts or nodes.
+
+**Rationale**:
+- In this product model, the concept is treated as the primary knowledge container.
+- First-layer tags are considered subordinate structural components of the concept rather than durable shared assets.
+- The user explicitly prefers destructive ownership semantics over shared-tag preservation.
+
+**Contract Rules**:
+1. **Deleting a concept**:
+   - delete the concept node
+   - find all directly connected neighbor nodes of type `tag`
+   - delete those tag nodes as part of the same operation
+   - delete all edges connected to the concept and to the deleted tags
+2. **Deleting a tag directly**:
+   - delete only that tag and its connected edges
+3. **Deleting an entity or other non-concept node**:
+   - delete only that node and its connected edges
+4. **Depth rule**:
+   - only first-layer tags directly adjacent to the concept are deleted
+   - no recursive traversal through second-hop tags or other node types
+5. **Shared-tag rule**:
+   - shared tags are still deleted if they are first-layer neighbors of the deleted concept
+   - their edges to other surviving nodes are also deleted
+
+**API Contract Impact**:
+`DELETE /node/{id}` changes from a simple single-node cascade delete to a type-aware delete operation.
+The response should become explicit about secondary deletions.
+
+**Planned Response Shape**:
+```json
+{
+  "deleted_node": {
+    "id": "concept_123",
+    "type": "concept"
+  },
+  "deleted_tags": [
+    { "id": "tag_python", "document": "#Python" },
+    { "id": "tag_oauth", "document": "#OAuth" }
+  ],
+  "deleted_edges_count": 7
+}
+```
+
+**Backward Compatibility Note**:
+This is a deliberate breaking API change for clients that currently expect:
+```json
+{ "node_id": "...", "edges_deleted": 3 }
+```
+Frontend and tests must be updated together.
+
 ---
 
 ## 🔍 Key Implementation Challenges
@@ -268,6 +320,15 @@ A simple JSON or SQLite lookup to manage pure graph topology without polluting v
 3. Store original display format in document field
 4. Implement tag merging for duplicates
 
+### Challenge 5: Type-Aware Destructive Deletes
+**Problem**: Deleting a concept now has broader consequences than deleting other node types.
+
+**Proposed Solution**:
+1. Centralize delete semantics inside `GraphStore`, not in route handlers
+2. Add a dedicated store method for type-aware delete planning/execution
+3. Return structured deletion results so frontend can explain what disappeared
+4. Add regression tests for shared-tag deletion and first-layer-only behavior
+
 ---
 
 ## 📝 Testing Strategy
@@ -277,12 +338,14 @@ A simple JSON or SQLite lookup to manage pure graph topology without polluting v
 - Importance score calculation
 - Tag normalization logic
 - FilterAgent decision logic
+- Type-aware delete semantics for concept-owned tag deletion
 
 ### Integration Tests
 - Full ingestion pipeline (memo → nodes + edges)
 - Query flow (ask → retrieval → response)
 - API endpoints with mock LLMs
 - CLI commands end-to-end
+- Delete API contract for concept vs tag vs entity
 
 ### Performance Tests
 - Large graph queries (1000+ nodes)

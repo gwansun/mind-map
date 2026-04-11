@@ -197,3 +197,147 @@ class TestGetEdges:
         assert len(edges_from_b) == 1
         assert edges_from_a[0].relation_type == "related_to"
         assert edges_from_b[0].relation_type == "related_to"
+
+
+class TestDeleteNodeTypeAware:
+    """Tests for the type-aware delete_node method."""
+
+    def test_concept_delete_removes_first_layer_tags(self, temp_store: GraphStore):
+        """Deleting a concept removes all directly-connected tag neighbors."""
+        temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
+        temp_store.add_node("tag1", "#tag1", NodeType.TAG)
+        temp_store.add_node("tag2", "#tag2", NodeType.TAG)
+        temp_store.add_edge(Edge(source="concept", target="tag1", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="concept", target="tag2", weight=1.0, relation_type="tagged_as"))
+
+        result = temp_store.delete_node("concept")
+
+        assert result.deleted_node_id == "concept"
+        assert set(result.deleted_tag_ids) == {"tag1", "tag2"}
+        assert result.deleted_edges_count == 4  # 2 edges for concept + 2 for each tag (no shared)
+
+        assert temp_store.get_node("concept") is None
+        assert temp_store.get_node("tag1") is None
+        assert temp_store.get_node("tag2") is None
+
+    def test_concept_delete_shared_tags_are_deleted_too(self, temp_store: GraphStore):
+        """Shared tags — connected to multiple concepts — are still deleted when one concept is deleted."""
+        temp_store.add_node("concept1", "Concept 1", NodeType.CONCEPT)
+        temp_store.add_node("concept2", "Concept 2", NodeType.CONCEPT)
+        temp_store.add_node("shared_tag", "#shared", NodeType.TAG)
+        temp_store.add_edge(Edge(source="concept1", target="shared_tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="concept2", target="shared_tag", weight=1.0, relation_type="tagged_as"))
+
+        result = temp_store.delete_node("concept1")
+
+        assert "shared_tag" in result.deleted_tag_ids
+        assert temp_store.get_node("concept1") is None
+        assert temp_store.get_node("shared_tag") is None
+        # concept2 survives
+        assert temp_store.get_node("concept2") is not None
+
+    def test_concept_delete_removes_edges_from_deleted_tags_to_surviving_nodes(self, temp_store: GraphStore):
+        """When a concept deletes its tag neighbors, edges from those tags to surviving nodes are also removed."""
+        temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
+        temp_store.add_node("entity", "An entity", NodeType.ENTITY)
+        temp_store.add_node("tag", "#tag", NodeType.TAG)
+        temp_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="tag", target="entity", weight=1.0, relation_type="related_to"))
+
+        result = temp_store.delete_node("concept")
+
+        assert "tag" in result.deleted_tag_ids
+        # The tag and its edge to entity are gone
+        assert temp_store.get_edges("tag") == []
+        assert temp_store.get_edges("entity") == []
+        # Entity itself survived
+        assert temp_store.get_node("entity") is not None
+
+    def test_delete_tag_directly_does_not_delete_neighboring_concepts(self, temp_store: GraphStore):
+        """Deleting a tag node does NOT delete neighboring concepts — only tag+edges are removed."""
+        temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
+        temp_store.add_node("tag", "#tag", NodeType.TAG)
+        temp_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
+
+        result = temp_store.delete_node("tag")
+
+        assert result.deleted_node_id == "tag"
+        assert result.deleted_tag_ids == []  # No extra tags deleted
+        assert temp_store.get_node("tag") is None
+        assert temp_store.get_node("concept") is not None
+        # Edge is gone but concept survives
+        assert temp_store.get_edges("concept") == []
+
+    def test_delete_entity_directly_does_not_delete_neighboring_tags(self, temp_store: GraphStore):
+        """Deleting an entity node does NOT delete neighboring tags."""
+        temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
+        temp_store.add_node("entity", "An entity", NodeType.ENTITY)
+        temp_store.add_node("tag", "#tag", NodeType.TAG)
+        temp_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="entity", target="tag", weight=1.0, relation_type="related_to"))
+
+        result = temp_store.delete_node("entity")
+
+        assert result.deleted_node_id == "entity"
+        assert result.deleted_tag_ids == []
+        assert temp_store.get_node("entity") is None
+        # Tag and concept survive
+        assert temp_store.get_node("tag") is not None
+        assert temp_store.get_node("concept") is not None
+
+    def test_first_layer_only_no_recursive_tag_deletion(self, temp_store: GraphStore):
+        """Deleting a concept only removes direct tag neighbors — not tags' neighbors."""
+        # chain: concept -> tag1 -> entity
+        temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
+        temp_store.add_node("tag1", "#tag1", NodeType.TAG)
+        temp_store.add_node("entity", "An entity", NodeType.ENTITY)
+        temp_store.add_edge(Edge(source="concept", target="tag1", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="tag1", target="entity", weight=1.0, relation_type="related_to"))
+
+        result = temp_store.delete_node("concept")
+
+        # tag1 is deleted but entity is NOT deleted (it's 2 hops away)
+        assert "tag1" in result.deleted_tag_ids
+        assert temp_store.get_node("tag1") is None
+        assert temp_store.get_node("entity") is not None
+        # The edge from tag1 to entity is gone
+        assert temp_store.get_edges("entity") == []
+
+    def test_delete_nonexistent_node_returns_empty_result(self, temp_store: GraphStore):
+        """Deleting a non-existent node returns a valid result with zero counts."""
+        result = temp_store.delete_node("nonexistent")
+
+        assert result.deleted_node_id == "nonexistent"
+        assert result.deleted_tag_ids == []
+        assert result.deleted_edges_count == 0
+
+    def test_concept_delete_no_tags_connected(self, temp_store: GraphStore):
+        """Deleting a concept with no tag neighbors returns empty tag list."""
+        temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
+        temp_store.add_node("entity", "An entity", NodeType.ENTITY)
+        temp_store.add_edge(Edge(source="concept", target="entity", weight=1.0, relation_type="related_to"))
+
+        result = temp_store.delete_node("concept")
+
+        assert result.deleted_node_id == "concept"
+        assert result.deleted_tag_ids == []
+        assert result.deleted_edges_count == 1
+        assert temp_store.get_node("concept") is None
+        assert temp_store.get_node("entity") is not None
+
+    def test_concept_delete_tag_also_connected_to_other_concepts(self, temp_store: GraphStore):
+        """A tag shared between two concepts is fully removed when either concept is deleted."""
+        temp_store.add_node("concept_a", "Concept A", NodeType.CONCEPT)
+        temp_store.add_node("concept_b", "Concept B", NodeType.CONCEPT)
+        temp_store.add_node("shared_tag", "#shared", NodeType.TAG)
+        temp_store.add_edge(Edge(source="concept_a", target="shared_tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="concept_b", target="shared_tag", weight=1.0, relation_type="tagged_as"))
+
+        result = temp_store.delete_node("concept_a")
+
+        # shared_tag is deleted despite concept_b still referencing it
+        assert "shared_tag" in result.deleted_tag_ids
+        assert temp_store.get_node("shared_tag") is None
+        # concept_b survives but its edge to shared_tag is gone
+        assert temp_store.get_node("concept_b") is not None
+        assert temp_store.get_edges("concept_b") == []
