@@ -9,6 +9,32 @@ Refactor the FilterAgent execution path so filtering uses:
 
 Cloud-provider routing should be removed from the **FilterAgent path**.
 
+## Status
+
+**Implemented** on 2026-04-12.
+
+This document remains as the design and implementation record.
+
+Implemented outcomes:
+- filter path now uses a dedicated backend chain:
+  1. Ollama `phi3.5`
+  2. OpenClaw MiniMax CLI
+  3. heuristic pipeline fallback
+- cloud-auto provider routing removed from the **filter path only**
+- separate `filter_llm` wiring added to pipeline, CLI, and API
+- dedicated filter fallback tests added
+
+Important operational finding:
+- a direct repo-path `uv tool install` did not reliably refresh the installed runtime on this machine
+- the fallback-chain behavior only worked live after reinstalling from the built wheel
+
+Recommended deployment install path:
+```bash
+./.venv/bin/python -m build
+uv tool uninstall mind-map
+uv tool install dist/mind_map-0.1.0-py3-none-any.whl
+```
+
 ---
 
 ## Target Filter Execution Order
@@ -203,7 +229,7 @@ This plan removes cloud providers from the **filter path only**, not necessarily
 
 ### Files
 - `tests/test_pipeline.py`
-- add `tests/test_filter_agent.py`
+- `tests/test_filter_fallback.py`
 - optionally extend integration tests
 
 ### Add tests for
@@ -236,6 +262,7 @@ This plan removes cloud providers from the **filter path only**, not necessarily
 - keep a robust JSON parser
 - preserve heuristic fallback
 - keep prompt identical across both model backends
+- validate live behavior through the installed binary, not repo-only tests
 
 ---
 
@@ -248,6 +275,7 @@ This plan removes cloud providers from the **filter path only**, not necessarily
 5. Add filter-specific tests
 6. Run targeted pipeline + filter tests
 7. Run broader regression tests
+8. Validate through installed wheel-based CLI runtime
 
 ---
 

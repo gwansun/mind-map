@@ -1,14 +1,17 @@
-# Retrieve Context Enhancement - Implementation Subparts
+# Implementation Subparts - Retrieve, Memo Pipeline, and Packaging Findings
 
 ## Scope
-This document reflects the actual work on branch `enhance-retrieve-context` and the follow-up packaging/debugging findings after merge.
+This document now reflects three concrete implementation threads that were completed in the repo:
 
-It is **not** a file-ingestion implementation plan.
-The real branch scope is to enhance `mind-map retrieve` so matched nodes can show directly connected context in a way that is suitable for OpenClaw prompt injection.
+1. retrieve-context enrichment
+2. memo pipeline duplicate-handling refactor
+3. deployment/runtime packaging findings for the OpenClaw-used `mind-map` CLI
+
+It is not a generic roadmap. It is a practical record of what actually changed and what was learned.
 
 ---
 
-## Implemented Subparts
+## Part 1. Retrieve Context Enhancement
 
 ### 1. CLI Surface Update
 **File:** `src/mind_map/app/cli/main.py`
@@ -24,8 +27,6 @@ Purpose:
 
 Status:
 - implemented
-
----
 
 ### 2. Connected Context Lookup in GraphStore
 **File:** `src/mind_map/rag/graph_store.py`
@@ -46,8 +47,6 @@ Behavior:
 Status:
 - implemented
 
----
-
 ### 3. Retrieve Output Enrichment
 **File:** `src/mind_map/app/cli/main.py`
 
@@ -55,25 +54,13 @@ Purpose:
 - print connected nodes beneath each matched retrieve result
 - reduce ambiguity that indented nodes are strict child nodes
 
-Output example:
-
-```text
-### Relevant Context from Mind Map:
-- [concept] (Relevance: 1.37): Some matched node
-  └─ related [tag] via tagged_as: #SomeTag
-  └─ related [entity] via mentions: Some Entity
-```
-
 Status:
 - implemented
 
----
-
-### 4. Automated GraphStore Test Coverage
-**File:** `tests/test_graph_store.py`
-
-Purpose:
-- validate the graph context lookup behavior and ordering
+### 4. Retrieve Test Coverage
+**Files:**
+- `tests/test_graph_store.py`
+- `tests/test_cli_retrieve.py`
 
 Covered:
 - empty input
@@ -85,190 +72,243 @@ Covered:
 - nonexistent node handling
 - multiple edges to same neighbor
 - deterministic ordering
-- existing `get_edges` expectations
+- retrieve output control flags
 
 Status:
 - implemented
 
 ---
 
-### 5. CLI Retrieve Test Coverage
-**File:** `tests/test_cli_retrieve.py`
+## Part 2. Memo Pipeline Refactor
 
-Purpose:
-- verify actual end-user retrieve behavior
+### 1. Pipeline Reordering
+**File:** `src/mind_map/app/pipeline.py`
+
+Implemented flow:
+- `retrieve -> filter -> extract -> store`
+
+Previous flow:
+- `filter -> retrieve -> extract -> store`
+
+Status:
+- implemented
+
+### 2. Retrieval Expansion for Memo Flow
+**Files:**
+- `src/mind_map/app/pipeline.py`
+- `src/mind_map/rag/graph_store.py`
+- `src/mind_map/core/schemas.py`
+
+Implemented:
+- retrieve top similar concept candidates
+- expand first-hop neighbors
+- include only:
+  - `entity`
+  - `tag`
+- exclude neighboring concepts
+- store retrieval context separately by role
+
+Status:
+- implemented
+
+### 3. Filter Decision Simplification
+**Files:**
+- `src/mind_map/core/schemas.py`
+- `src/mind_map/app/pipeline.py`
+
+Implemented decision set:
+- `discard`
+- `duplicate`
+- `new`
+
+Behavior:
+- `duplicate` skips extraction and storage
+- `discard` ends early
+- `new` proceeds
+
+Status:
+- implemented
+
+### 4. Extraction Contract Cleanup
+**Files:**
+- `src/mind_map/processor/knowledge_processor.py`
+- `src/mind_map/core/schemas.py`
+
+Implemented:
+- extraction uses new text only
+- retrieved concept content removed from extraction input
+- retrieved entity/tag references allowed as lightweight grounding hints
+- `existing_links` removed from extraction contract
+
+Status:
+- implemented
+
+### 5. Storage Cleanup
+**File:** `src/mind_map/app/pipeline.py`
+
+Implemented:
+- create concept node only for `new`
+- reuse tag/entity nodes by deterministic ID normalization
+- create concept -> tag, concept -> entity, entity -> entity edges
+- link new concepts to retrieved concepts with deterministic `related_context`
+- no merge/update-existing path
+
+Status:
+- implemented
+
+### 6. Memo Pipeline Test Coverage
+**Files:**
+- `tests/test_pipeline.py`
+- `tests/test_graph_store.py`
+- `tests/test_api_routes.py`
 
 Covered:
-- default retrieve shows context
-- `--no-context` suppresses related lines
-- `--max-context-per-node` caps visible neighbors
+- retrieval context presence
+- first-hop neighbor logic
+- duplicate short-circuiting
+- standalone entity persistence
+- deterministic relationship creation
+- API-adjacent duplicate behavior
 
 Status:
 - implemented
 
-Verified:
+---
 
-```bash
-./.venv/bin/pytest -q tests/test_graph_store.py tests/test_cli_retrieve.py
-# 14 passed
-```
+## Part 3. Filter Fallback Chain
+
+### 1. Filter-Specific LLM Chain
+**Files:**
+- `src/mind_map/processor/filter_agent.py`
+- `src/mind_map/processor/processing_llm.py`
+- `src/mind_map/app/pipeline.py`
+- `src/mind_map/app/api/routes.py`
+- `src/mind_map/app/cli/main.py`
+
+Implemented filter chain:
+1. Ollama `phi3.5`
+2. OpenClaw MiniMax CLI
+3. heuristic fallback in pipeline
+
+Important scope choice:
+- cloud-provider routing removed from **filter path only**
+- broader processing/extraction provider routing left intact
+
+Status:
+- implemented
+
+### 2. FilterAgent Backend Changes
+**File:** `src/mind_map/processor/filter_agent.py`
+
+Implemented:
+- `FilterAgentWithFallback`
+- MiniMax CLI helper
+- prompt contract shared across phi3.5 and MiniMax
+
+Status:
+- implemented
+
+### 3. Filter LLM Selection
+**File:** `src/mind_map/processor/processing_llm.py`
+
+Implemented:
+- `get_filter_llm()`
+- phi3.5-only filter LLM path
+- no cloud-auto routing for filter stage
+
+Status:
+- implemented
+
+### 4. Filter Fallback Tests
+**File:** `tests/test_filter_fallback.py`
+
+Covered:
+- phi3.5 primary success
+- MiniMax fallback on failure
+- safe fallback when both backends fail
+- integration with pipeline `filter_llm`
+- no cloud-auto filter routing
+
+Status:
+- implemented
 
 ---
 
-## Real Architecture of This Change
+## Part 4. Packaging and Runtime Findings
 
-### Retrieval flow
-1. query vector store for top matching nodes
-2. enrich matched nodes with relation factor
-3. optionally fetch connected external neighbors
-4. sort connected neighbors deterministically
-5. print matched nodes
-6. print bounded neighbor context underneath each result
-
-### Important semantic choice
-Connected context is:
-- **display-time enrichment**, not new retrieval ranking logic
-- **one-hop graph expansion**, not multi-hop reasoning
-- **external-neighbor only**, not links between already matched nodes
-- **bounded for prompt usability**, not an unbounded graph dump
-
----
-
-## OpenClaw Integration Findings
-
-### What OpenClaw actually executes
-OpenClaw code uses PATH resolution:
+### 1. OpenClaw Execution Path
+OpenClaw resolves and executes:
 - `which mind-map`
-- `execFileSync("mind-map", ...)`
+- current path on this machine:
+  - `~/.local/bin/mind-map`
 
-So the actual binary in use is whatever `mind-map` resolves to in the running environment.
+That local executable launches the uv-managed tool runtime.
 
-### Actual resolved path on this machine
-- `~/.local/bin/mind-map`
-- symlink → `~/.local/share/uv/tools/mind-map/bin/mind-map`
+### 2. Critical Packaging Mismatch Discovered
+A major issue was found during live duplicate testing.
 
-### Launcher linkage
-The uv-managed launcher imports:
-- `mind_map.app.cli.main:app`
+Observed behavior:
+- repo source contained the new filter fallback-chain code
+- built wheel and sdist also contained the new code
+- but the installed uv-tool runtime still loaded older `site-packages` content
 
-So the real execution chain is:
-1. OpenClaw → `mind-map`
-2. PATH symlink → uv tool launcher
-3. uv launcher → installed `site-packages/mind_map/app/cli/main.py`
+This was proven by comparing:
+- repo `src/mind_map/...`
+- installed `~/.local/share/uv/tools/mind-map/lib/python3.11/site-packages/mind_map/...`
 
-### Packaging issue discovered
-Installing via direct repo path:
+The stale installed runtime lacked:
+- `get_filter_llm`
+- `FilterAgentWithFallback`
+- `filter_llm` integration in pipeline/CLI/API
 
-```bash
-uv tool install --force /Users/gwansun/Desktop/projects/mind-map
-```
-
-resulted in a uv-managed install whose `site-packages` contents were older than the repo source.
-
-This was proven by diffing:
-- repo `src/mind_map/app/cli/main.py`
-- installed uv tool `site-packages/mind_map/app/cli/main.py`
-
-Observed mismatch:
-- repo had `--max-context-per-node` and updated wording
-- installed tool still lacked the new option and used older output formatting
-
-### Reliable installation fix
-The successful procedure was:
+### 3. Reliable Installation Procedure
+The reliable fix was:
 
 ```bash
 ./.venv/bin/python -m build
 uv tool uninstall mind-map
-uv tool install ./dist/mind_map-0.1.0-py3-none-any.whl
+uv tool install dist/mind_map-0.1.0-py3-none-any.whl
 ```
 
-Result:
-- installed `site-packages` now matched repo source
-- installed CLI accepted `--max-context-per-node`
-- OpenClaw-used binary became current
+This succeeded where direct repo-path installation was unreliable.
 
-### Operational lesson
-For this project, when updating the OpenClaw-used mind-map CLI:
-- prefer **fresh wheel install** over direct repo-path `uv tool install`
-- verify both:
-  - PATH resolution
-  - installed uv tool `site-packages` contents
+After wheel-based install:
+- installed runtime symbols matched repo source
+- live duplicate memo test correctly returned `Skipped duplicate`
 
----
-
-## Why this is useful
-
-This improves retrieval in three practical ways:
-
-1. **Better human readability**
-   - users can see why a node matters in graph context
-
-2. **Better prompt injection context**
-   - downstream systems get a richer and more bounded text block from one retrieve call
-
-3. **More reliable deployment behavior**
-   - the actual OpenClaw-used binary path and installation method are now understood and documented
+### 4. Operational Lesson
+For this project on this machine:
+- prefer **wheel-based install** over direct repo-path `uv tool install`
+- verify installed `site-packages` when debugging runtime mismatches
+- do not assume a successful install means the live runtime matches repo source
 
 ---
 
-## Constraints / Current Limits
+## Part 5. Backend Runtime Operations
 
-1. No relation filtering yet
-2. No recursive traversal
-3. No JSON output mode yet
-4. Multiple edges to the same neighbor are still displayed separately
+### Backend rebuild and restart
+The backend was rebuilt and restarted successfully.
 
----
+Runtime:
+- uvicorn serving `mind_map.app.api.routes:app`
+- host: `127.0.0.1`
+- port: `8000`
 
-## Suggested Follow-up Subparts
-
-### A. Relation filtering
-- add `--relation-type` include/exclude support
-
-### B. Structured output mode
-- add JSON output for easier downstream machine parsing
-
-### C. Duplicate-neighbor compaction
-- optionally collapse multiple relations for the same neighbor into one summarized line
-
-### D. Depth control
-- optionally allow depth-2 traversal later
-- keep default at depth-1
-
-### E. Release/install note
-- document wheel-based install as the preferred OpenClaw deployment path for this tool
-
----
-
-## What should be considered stale
-
-The old ideas below are not part of the current branch implementation:
-- document classifier
-- LLM chunking engine
-- file readers
-- ingest command
-- relation discovery prompt for file chunks
-- KG writer for external file ingestion
-
-If those ideas are revisited later, they should live in a separate plan document with separate scope.
+Health verification:
+- `/stats` responded successfully after restart
 
 ---
 
 ## Final Summary
 
-This branch is a focused retrieval enhancement plus a packaging/deployment investigation.
+The work is no longer just “retrieve enhancement”.
 
-Implemented:
-- CLI toggle for context display
-- context cap per matched node
-- graph neighbor lookup helper
-- deterministic ordering
-- enriched retrieve output
-- GraphStore tests
-- retrieve CLI tests
-- verified OpenClaw binary path and wheel-based installation fix
+The repo now contains:
+- retrieve-time graph context enrichment
+- retrieve-first memo pipeline with duplicate short-circuiting
+- filter-specific fallback chain: phi3.5 -> MiniMax -> heuristic
+- validated packaging lesson: install from built wheel for reliable OpenClaw-used runtime updates
 
-Not implemented:
-- ingestion pipeline
-- LLM chunking/classification
-- write-side graph expansion from files
+The most important practical lesson from this cycle:
+- **live CLI validation matters**
+- the logic can be correct in repo and tests, but still fail in the installed runtime if packaging/install behavior is stale

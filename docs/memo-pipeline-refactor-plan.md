@@ -4,6 +4,28 @@
 
 Refactor the memo ingestion flow to prevent duplicate concepts by moving duplicate detection ahead of extraction, keeping extraction focused on new text, and using retrieved first-hop entity/tag context only as lightweight reference material.
 
+## Status
+
+**Implemented** on 2026-04-12.
+
+This document remains useful as the design record, but the core plan below has already been executed in the codebase.
+
+Implemented outcomes:
+- pipeline reordered to `retrieve -> filter -> extract -> store`
+- duplicate memos now skip extraction and storage
+- retrieval expands first-hop `entity`/`tag` neighbors from retrieved concepts
+- extraction no longer uses retrieved concept content
+- extraction uses only new text plus optional entity/tag references
+- `existing_links` removed from extraction flow
+- storage links new concepts to retrieved concepts deterministically
+- pipeline, graph-store, and API-adjacent tests updated and passing during implementation
+
+Operational note:
+- live validation later showed that the installed `uv tool` runtime could lag behind repo source unless installed from the built wheel
+- for real CLI behavior, prefer wheel-based install when deploying updated builds
+
+---
+
 ## Target Flow
 
 1. `retrieve`
