@@ -62,6 +62,11 @@ export class GraphService {
 
         this.nodes.set(nodes);
         this.links.set(links);
+
+        const selectedId = this.selectedNodeId();
+        if (selectedId && !nodes.some((node) => node.id === selectedId)) {
+          this.clearSelection();
+        }
       }
     } catch (error) {
       console.error('Failed to load graph:', error);

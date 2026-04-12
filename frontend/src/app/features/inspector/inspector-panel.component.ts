@@ -7,6 +7,7 @@ import {
   inject,
   ChangeDetectionStrategy,
 } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { ApiService } from '../../core';
 import { D3Node, Edge, NodeType, NodeDetailResponse } from '../../models';
@@ -433,6 +434,15 @@ export class InspectorPanelComponent {
         this.importanceScore.set(details.importance_score);
       }
     } catch (error) {
+      this.edges.set([]);
+      this.importanceScore.set(0);
+
+      if (error instanceof HttpErrorResponse && error.status === 404) {
+        console.warn(`Selected node no longer exists in backend store: ${nodeId}`);
+        this.close.emit();
+        return;
+      }
+
       console.error('Failed to load node details:', error);
     } finally {
       this.isLoading.set(false);
