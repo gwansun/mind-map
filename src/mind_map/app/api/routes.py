@@ -268,11 +268,14 @@ async def ask(request: AskRequest) -> AskResponse:
 async def add_memo(request: MemoRequest) -> dict[str, Any]:
     """Ingest a memo into the knowledge graph via the LangGraph pipeline."""
     from mind_map.app.pipeline import ingest_memo
-    from mind_map.processor.processing_llm import get_processing_llm
+    from mind_map.processor.processing_llm import get_filter_llm, get_processing_llm
 
     store = get_store()
     store.initialize()
 
+    # filter_llm: phi3.5 only (no cloud-auto) for the filter path
+    # extraction uses the general processing_llm (cloud-auto with Ollama fallback)
+    filter_llm = get_filter_llm()
     processing_llm = get_processing_llm()
 
     success, message, node_ids = ingest_memo(
@@ -280,6 +283,7 @@ async def add_memo(request: MemoRequest) -> dict[str, Any]:
         store=store,
         llm=processing_llm,
         source_id=request.source,
+        filter_llm=filter_llm,
     )
 
     return {

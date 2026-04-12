@@ -1,4 +1,4 @@
-"""LangGraph pipeline for memo ingestion with retrieval-augmented extraction."""
+"""LangGraph pipeline for memo ingestion with retrieval-first duplicate detection."""
 
 import uuid
 from dataclasses import dataclass, field
@@ -9,10 +9,10 @@ from langgraph.graph import END, StateGraph
 from mind_map.core.schemas import (
     Edge,
     ExtractionResult,
-    ExistingLink,
     FilterDecision,
     GraphNode,
     NodeType,
+    RetrievalContext,
 )
 from mind_map.rag.graph_store import GraphStore
 
@@ -23,121 +23,115 @@ class PipelineState:
 
     raw_text: str
     source_id: str | None = None
+    retrieval: RetrievalContext | None = None
     filter_decision: FilterDecision | None = None
-    retrieved_nodes: list[GraphNode] = field(default_factory=list)
     extraction: ExtractionResult | None = None
     node_ids: list[str] = field(default_factory=list)
     error: str | None = None
 
 
-# How many existing nodes to retrieve for grounding extraction
 _RETRIEVAL_TOP_K = 5
 
 
-def create_filter_node(llm: Any | None = None):
-    """Create a filter node that decides keep/discard."""
+def _heuristic_filter(text: str, retrieved_concepts: list[GraphNode]) -> FilterDecision:
+    """Simple non-LLM novelty filter."""
+    trivial_patterns = [
+        "hello", "hi", "thanks", "thank you", "ok", "okay",
+        "yes", "no", "sure", "bye", "goodbye"
+    ]
+    lower_text = text.lower().strip()
 
-    def filter_node(state: PipelineState) -> dict[str, Any]:
-        text = state.raw_text.strip()
+    if len(text.strip()) < 10:
+        return FilterDecision(action="discard", reason="Text too short (< 10 characters)", summary=None)
 
-        # Simple heuristic filtering if no LLM available
-        if llm is None:
-            # Filter out very short or trivial messages
-            trivial_patterns = [
-                "hello", "hi", "thanks", "thank you", "ok", "okay",
-                "yes", "no", "sure", "bye", "goodbye"
-            ]
-            lower_text = text.lower()
+    if lower_text in trivial_patterns:
+        return FilterDecision(action="discard", reason="Trivial/greeting message", summary=None)
 
-            if len(text) < 10:
-                return {
-                    "filter_decision": FilterDecision(
-                        action="discard",
-                        reason="Text too short (< 10 characters)",
-                        summary=None
-                    )
-                }
+    normalized = " ".join(text.lower().split())
+    for concept in retrieved_concepts:
+        if normalized and normalized == " ".join(concept.document.lower().split()):
+            return FilterDecision(
+                action="duplicate",
+                reason=f"Matches existing concept {concept.id}",
+                summary=None,
+            )
 
-            if lower_text in trivial_patterns:
-                return {
-                    "filter_decision": FilterDecision(
-                        action="discard",
-                        reason="Trivial/greeting message",
-                        summary=None
-                    )
-                }
-
-            return {
-                "filter_decision": FilterDecision(
-                    action="keep",
-                    reason="Content appears substantive",
-                    summary=text
-                )
-            }
-
-        # Use LLM for filtering, fall back to heuristic on failure
-        from mind_map.processor.filter_agent import FilterAgent
-        agent = FilterAgent(llm)
-        try:
-            decision = agent.evaluate_sync(text)
-            return {"filter_decision": decision}
-        except Exception:
-            # LLM failed — fall back to heuristic (keep substantive content)
-            return {
-                "filter_decision": FilterDecision(
-                    action="keep",
-                    reason="LLM filter unavailable, kept by heuristic fallback",
-                    summary=text,
-                )
-            }
-
-    return filter_node
+    return FilterDecision(action="new", reason="Content appears substantive and new", summary=text)
 
 
 def create_retrieval_node(store: GraphStore):
-    """Create a retrieval node that finds relevant existing nodes before extraction.
-
-    This enables the extraction model to form grounded links to existing records.
-    """
+    """Retrieve similar concepts and their first-hop entity/tag neighbors."""
 
     def retrieval_node(state: PipelineState) -> dict[str, Any]:
-        if state.filter_decision is None or state.filter_decision.action == "discard":
-            return {}
-
-        text = state.filter_decision.summary or state.raw_text
-
-        # Query the graph for similar nodes, keeping the threshold conservative
-        retrieved = store.query_similar(text, n_results=_RETRIEVAL_TOP_K, max_distance=0.5)
-
-        return {"retrieved_nodes": retrieved}
+        text = state.raw_text.strip()
+        concepts = [
+            node for node in store.query_similar(text, n_results=_RETRIEVAL_TOP_K, max_distance=0.5)
+            if node.metadata.type == NodeType.CONCEPT
+        ]
+        neighbors = store.get_first_hop_neighbors([node.id for node in concepts])
+        entities = [node for node in neighbors if node.metadata.type == NodeType.ENTITY]
+        tags = [node for node in neighbors if node.metadata.type == NodeType.TAG]
+        return {"retrieval": RetrievalContext(concepts=concepts, entities=entities, tags=tags)}
 
     return retrieval_node
 
 
-def create_extraction_node(llm: Any | None = None):
-    """Create an extraction node that extracts entities, tags, and existing links.
+def create_filter_node(filter_llm: Any | None = None):
+    """Create a filter node that decides discard/duplicate/new.
 
-    Uses retrieval context from the pipeline state when available.
+    Filter evaluation order:
+        1. phi3.5 via FilterAgentWithFallback (LangChain) — if filter_llm provided
+        2. OpenClaw MiniMax CLI — via FilterAgentWithFallback fallback
+        3. Heuristic filter (final fallback)
     """
+    from mind_map.processor.filter_agent import FilterAgentWithFallback
+
+    agent_with_fallback = FilterAgentWithFallback(filter_llm) if filter_llm else None
+
+    def filter_node(state: PipelineState) -> dict[str, Any]:
+        text = state.raw_text.strip()
+        retrieved_concepts = state.retrieval.concepts if state.retrieval else []
+
+        # Always check heuristic first — discard/trivial always returns discard
+        heuristic_decision = _heuristic_filter(text, retrieved_concepts)
+        if heuristic_decision.action == "discard":
+            return {"filter_decision": heuristic_decision}
+
+        # Try LLM chain: phi3.5 -> MiniMax CLI -> heuristic
+        if agent_with_fallback is not None:
+            try:
+                decision = agent_with_fallback.evaluate_sync(text, retrieved_concepts)
+                return {"filter_decision": decision}
+            except RuntimeError:
+                # Both phi3.5 and MiniMax failed — fall through to heuristic
+                pass
+
+        return {"filter_decision": heuristic_decision}
+
+    return filter_node
+
+
+def create_extraction_node(llm: Any | None = None):
+    """Create an extraction node that extracts only for new memos."""
 
     def extraction_node(state: PipelineState) -> dict[str, Any]:
-        if state.filter_decision is None or state.filter_decision.action == "discard":
+        if state.filter_decision is None or state.filter_decision.action != "new":
             return {}
 
         text = state.filter_decision.summary or state.raw_text
-        retrieved_nodes = state.retrieved_nodes
+        references = []
+        if state.retrieval is not None:
+            references = [*state.retrieval.entities, *state.retrieval.tags]
 
-        # Use KnowledgeProcessor with retrieval context
         if llm is not None:
             from mind_map.processor.knowledge_processor import KnowledgeProcessor
             processor = KnowledgeProcessor(llm)
             try:
-                result = processor.extract_with_context(text, retrieved_nodes)
+                result = processor.extract_with_references(text, references)
                 return {"extraction": result}
             except Exception:
                 pass
 
-        # Fall back to heuristic extraction
         return _heuristic_extraction(text)
 
     return extraction_node
@@ -169,34 +163,20 @@ def _heuristic_extraction(text: str) -> dict[str, Any]:
             tags=tags[:5],
             entities=entities,
             relationships=[],
-            existing_links=[],
         )
     }
 
 
 def create_storage_node(store: GraphStore):
-    """Create a storage node that persists to GraphStore.
-
-    Handles:
-    - Main concept node creation
-    - Tag nodes and tagged_as edges
-    - Entity nodes and mentions edges (including standalone entities)
-    - Relationship edges between entities
-    - Existing link edges to retrieved nodes (with ID validation)
-    - Safe link deduplication
-    """
+    """Persist new memo extraction results to GraphStore."""
 
     def storage_node(state: PipelineState) -> dict[str, Any]:
-        if state.extraction is None:
+        if state.extraction is None or state.filter_decision is None or state.filter_decision.action != "new":
             return {}
 
         node_ids: list[str] = []
         extraction = state.extraction
 
-        # Build a set of valid retrieved node IDs for filtering existing_links
-        retrieved_ids: set[str] = {n.id for n in state.retrieved_nodes}
-
-        # ---- Main concept node ----
         concept_id = str(uuid.uuid4())
         store.add_node(
             node_id=concept_id,
@@ -206,10 +186,8 @@ def create_storage_node(store: GraphStore):
         )
         node_ids.append(concept_id)
 
-        # ---- Tag nodes and edges ----
         for tag in extraction.tags:
             tag_id = f"tag_{tag.lower().replace('#', '').replace(' ', '_')}"
-
             if store.get_node(tag_id) is None:
                 store.add_node(
                     node_id=tag_id,
@@ -217,15 +195,8 @@ def create_storage_node(store: GraphStore):
                     node_type=NodeType.TAG,
                 )
             node_ids.append(tag_id)
+            store.add_edge(Edge(source=concept_id, target=tag_id, relation_type="tagged_as"))
 
-            store.add_edge(Edge(
-                source=concept_id,
-                target=tag_id,
-                relation_type="tagged_as",
-            ))
-
-        # ---- Entity nodes and edges ----
-        # Track which entities we've already linked to avoid duplicate mentions edges
         linked_entity_ids: set[str] = set()
 
         for source_name, relation, target_name in extraction.relationships:
@@ -234,153 +205,82 @@ def create_storage_node(store: GraphStore):
 
             for eid, ename in [(source_eid, source_name), (target_eid, target_name)]:
                 if store.get_node(eid) is None:
-                    store.add_node(
-                        node_id=eid,
-                        document=ename,
-                        node_type=NodeType.ENTITY,
-                    )
+                    store.add_node(node_id=eid, document=ename, node_type=NodeType.ENTITY)
                     node_ids.append(eid)
-                else:
-                    # Entity already exists — still track it for mentions edge
-                    pass
-
                 if eid not in linked_entity_ids:
-                    store.add_edge(Edge(
-                        source=concept_id,
-                        target=eid,
-                        relation_type="mentions",
-                    ))
+                    store.add_edge(Edge(source=concept_id, target=eid, relation_type="mentions"))
                     linked_entity_ids.add(eid)
 
-            # Relationship edge between the two entities
-            store.add_edge(Edge(
-                source=source_eid,
-                target=target_eid,
-                relation_type=relation,
-            ))
+            store.add_edge(Edge(source=source_eid, target=target_eid, relation_type=relation))
 
-        # ---- Standalone entities (not in any relationship) ----
-        # Persist them even if they don't appear in relationships
         relationship_entity_ids: set[str] = set()
-        for source_name, relation, target_name in extraction.relationships:
-            relationship_entity_ids.add(
-                f"entity_{source_name.lower().replace(' ', '_')}"
-            )
-            relationship_entity_ids.add(
-                f"entity_{target_name.lower().replace(' ', '_')}"
-            )
+        for source_name, _, target_name in extraction.relationships:
+            relationship_entity_ids.add(f"entity_{source_name.lower().replace(' ', '_')}")
+            relationship_entity_ids.add(f"entity_{target_name.lower().replace(' ', '_')}")
 
         for entity_name in extraction.entities:
             eid = f"entity_{entity_name.lower().replace(' ', '_')}"
-            if eid in relationship_entity_ids:
-                continue  # Already handled above
-            if eid in linked_entity_ids:
-                continue  # Already linked via a previous iteration
-
+            if eid in relationship_entity_ids or eid in linked_entity_ids:
+                continue
             if store.get_node(eid) is None:
-                store.add_node(
-                    node_id=eid,
-                    document=entity_name,
-                    node_type=NodeType.ENTITY,
-                )
+                store.add_node(node_id=eid, document=entity_name, node_type=NodeType.ENTITY)
                 node_ids.append(eid)
-
-            store.add_edge(Edge(
-                source=concept_id,
-                target=eid,
-                relation_type="mentions",
-            ))
+            store.add_edge(Edge(source=concept_id, target=eid, relation_type="mentions"))
             linked_entity_ids.add(eid)
 
-        # ---- Existing link edges (to retrieved nodes) ----
-        # Only persist links to IDs that were actually in the retrieval context
-        seen_existing_links: set[tuple[str, str, str]] = set()
-        for link in extraction.existing_links:
-            if link.target_id not in retrieved_ids:
-                # ID not in retrieval context — skip to prevent hallucinated links
-                continue
-
-            relation_type = link.relation_type or "related_context"
-            key = (concept_id, link.target_id, relation_type)
-            if key in seen_existing_links:
-                continue
-
-            store.add_edge(Edge(
-                source=concept_id,
-                target=link.target_id,
-                relation_type=relation_type,
-            ))
-            seen_existing_links.add(key)
+        if state.retrieval is not None:
+            for concept in state.retrieval.concepts:
+                store.add_edge(Edge(source=concept_id, target=concept.id, relation_type="related_context"))
 
         return {"node_ids": node_ids}
 
     return storage_node
 
 
-def should_continue(state: PipelineState) -> str:
-    """Determine if pipeline should continue after filtering."""
+def should_continue_after_filter(state: PipelineState) -> str:
+    """Determine whether to continue to extraction or end."""
     if state.error:
         return "end"
-    if state.filter_decision and state.filter_decision.action == "discard":
+    if state.filter_decision is None:
         return "end"
-    return "retrieve"
-
-
-def should_extract(state: PipelineState) -> str:
-    """Decide whether to proceed to extraction or end."""
-    if state.error:
-        return "end"
-    return "extract"
+    if state.filter_decision.action == "new":
+        return "extract"
+    return "end"
 
 
 def build_ingestion_pipeline(
     store: GraphStore,
     llm: Any | None = None,
+    filter_llm: Any | None = None,
 ) -> StateGraph:
     """Build the LangGraph pipeline for memo ingestion.
 
     Pipeline flow:
-        filter -> retrieve -> extract -> store -> end
+        retrieve -> filter -> extract -> store -> end
 
     Args:
-        store: GraphStore instance for persistence
-        llm: Optional LangChain LLM for intelligent processing
-
-    Returns:
-        Compiled StateGraph
+        store: GraphStore instance for retrieval and storage
+        llm: General processing LLM (used for extraction, not filter)
+        filter_llm: Ollama LLM for filter step (phi3.5 via LangChain).
+                    If None, filter falls back to MiniMax CLI then heuristic.
     """
     workflow = StateGraph(PipelineState)
 
-    # Add nodes
-    workflow.add_node("filter", create_filter_node(llm))
     workflow.add_node("retrieve", create_retrieval_node(store))
+    workflow.add_node("filter", create_filter_node(filter_llm))
     workflow.add_node("extract", create_extraction_node(llm))
     workflow.add_node("store", create_storage_node(store))
 
-    # Set entry point
-    workflow.set_entry_point("filter")
-
-    # Conditional after filter
+    workflow.set_entry_point("retrieve")
+    workflow.add_edge("retrieve", "filter")
     workflow.add_conditional_edges(
         "filter",
-        should_continue,
-        {
-            "retrieve": "retrieve",
-            "end": END,
-        }
-    )
-
-    # retrieve -> extract
-    workflow.add_conditional_edges(
-        "retrieve",
-        should_extract,
+        should_continue_after_filter,
         {
             "extract": "extract",
             "end": END,
         }
     )
-
-    # extract -> store -> end
     workflow.add_edge("extract", "store")
     workflow.add_edge("store", END)
 
@@ -392,34 +292,32 @@ def ingest_memo(
     store: GraphStore,
     llm: Any | None = None,
     source_id: str | None = None,
+    filter_llm: Any | None = None,
 ) -> tuple[bool, str, list[str]]:
     """Ingest a memo through the pipeline.
 
     Args:
-        text: Raw text to ingest
+        text: Raw memo text to process
         store: GraphStore instance
-        llm: Optional LangChain LLM
-        source_id: Optional source identifier
-
-    Returns:
-        Tuple of (success, message, node_ids)
+        llm: General processing LLM for extraction step
+        source_id: Optional source identifier for the memo
+        filter_llm: Ollama LLM for filter step (phi3.5). If None,
+                     uses MiniMax CLI fallback then heuristic.
     """
-    pipeline = build_ingestion_pipeline(store, llm)
+    pipeline = build_ingestion_pipeline(store, llm, filter_llm=filter_llm)
 
-    initial_state = PipelineState(
-        raw_text=text,
-        source_id=source_id,
-    )
-
-    # Run the pipeline
+    initial_state = PipelineState(raw_text=text, source_id=source_id)
     final_state = pipeline.invoke(initial_state)
 
     if final_state.get("error"):
         return False, final_state["error"], []
 
     filter_decision = final_state.get("filter_decision")
-    if filter_decision and filter_decision.action == "discard":
-        return False, f"Discarded: {filter_decision.reason}", []
+    if filter_decision:
+        if filter_decision.action == "discard":
+            return False, f"Discarded: {filter_decision.reason}", []
+        if filter_decision.action == "duplicate":
+            return False, f"Skipped duplicate: {filter_decision.reason}", []
 
     node_ids = final_state.get("node_ids", [])
     return True, f"Created {len(node_ids)} nodes", node_ids

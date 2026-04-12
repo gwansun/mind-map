@@ -68,8 +68,8 @@ class GraphStore:
         result: dict[str, str | int | float | bool] = {}
         for key, value in data.items():
             if value is None:
-                continue  # ChromaDB doesn't accept None
-            if hasattr(value, "value"):  # Handle enums
+                continue
+            if hasattr(value, "value"):
                 result[key] = value.value
             else:
                 result[key] = value
@@ -154,8 +154,6 @@ class GraphStore:
                 ids=[node_id], include=["documents", "metadatas", "embeddings"]
             )
         except Exception:
-            # ChromaDB can return InternalError for IDs that exist in batch queries
-            # but fail individually (data inconsistency). Treat as missing.
             return None
         if not result["ids"]:
             return None
@@ -166,7 +164,6 @@ class GraphStore:
             if metadata_dict
             else NodeMetadata(type=NodeType.CONCEPT, created_at=0, last_interaction=0)
         )
-        # Handle embeddings carefully - ChromaDB returns numpy arrays
         embeddings = result.get("embeddings")
         embedding = None
         if embeddings is not None and len(embeddings) > 0:
@@ -191,26 +188,33 @@ class GraphStore:
             for row in cursor.fetchall()
         ]
 
+    def get_first_hop_neighbors(self, node_ids: list[str]) -> list[GraphNode]:
+        """Return first-hop entity/tag neighbors for the given nodes."""
+        if not node_ids:
+            return []
+
+        node_ids_set = set(node_ids)
+        neighbor_ids: set[str] = set()
+        for node_id in node_ids:
+            for edge in self.get_edges(node_id):
+                neighbor_id = edge.target if edge.source == node_id else edge.source
+                if neighbor_id in node_ids_set:
+                    continue
+                neighbor = self.get_node(neighbor_id)
+                if neighbor and neighbor.metadata.type in (NodeType.ENTITY, NodeType.TAG):
+                    neighbor_ids.add(neighbor_id)
+
+        neighbors: list[GraphNode] = []
+        for neighbor_id in sorted(neighbor_ids):
+            node = self.get_node(neighbor_id)
+            if node is not None:
+                neighbors.append(node)
+        return neighbors
+
     def get_connected_context(
         self, node_ids: list[str]
     ) -> dict[str, list[tuple[GraphNode, Edge]]]:
-        """Get direct neighbors for each node in node_ids.
-
-        Returns a dict mapping node_id → [(connected_node, edge), ...]
-        Only returns neighbors that are NOT in node_ids (external connections only).
-        Results for each source node are sorted deterministically by:
-        1. edge weight descending
-        2. neighbor importance score descending
-        3. relation type ascending
-        4. neighbor document ascending
-        5. neighbor id ascending
-
-        Args:
-            node_ids: List of source node IDs to get connections for
-
-        Returns:
-            Dict mapping source node_id to list of (neighbor_node, edge) tuples
-        """
+        """Get direct neighbors for each node in node_ids."""
         if not node_ids:
             return {}
 
@@ -220,9 +224,7 @@ class GraphStore:
         for node_id in node_ids:
             edges = self.get_edges(node_id)
             for edge in edges:
-                # Get the neighbor (other end of the edge)
                 neighbor_id = edge.target if edge.source == node_id else edge.source
-                # Skip if neighbor is one of our source nodes
                 if neighbor_id in node_ids_set:
                     continue
                 neighbor_node = self.get_node(neighbor_id)
@@ -268,26 +270,14 @@ class GraphStore:
     def query_similar(
         self, query: str | list[float], n_results: int = 10, max_distance: float = 0.5
     ) -> list[GraphNode]:
-        """Query nodes by text or embedding similarity.
-
-        Args:
-            query: Either a text string or embedding vector
-            n_results: Maximum number of results to return
-            max_distance: Maximum cosine distance to include (0=identical, 1=unrelated, 2=opposite).
-                Results with distance > max_distance are filtered out.
-
-        Returns:
-            List of GraphNode objects sorted by relevance
-        """
+        """Query nodes by text or embedding similarity."""
         if isinstance(query, str):
-            # Text-based query using ChromaDB's built-in embedding
             results = self.collection.query(
                 query_texts=[query],
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"],
             )
         else:
-            # Embedding-based query
             results = self.collection.query(
                 query_embeddings=[query],
                 n_results=n_results,
@@ -300,8 +290,6 @@ class GraphStore:
         nodes: list[GraphNode] = []
         for i, node_id in enumerate(results["ids"][0]):
             distance = results["distances"][0][i] if results["distances"] else 0.0
-
-            # Filter out irrelevant results beyond the distance threshold
             if distance > max_distance:
                 continue
 
@@ -311,7 +299,6 @@ class GraphStore:
                 if metadata_dict
                 else NodeMetadata(type=NodeType.CONCEPT, created_at=0, last_interaction=0)
             )
-            # Convert distance to similarity score [0.0, 1.0]
             metadata.importance_score = max(0.0, 1 - distance)
 
             node = GraphNode(
@@ -326,21 +313,10 @@ class GraphStore:
     def get_relation_factors(
         self, anchor_id: str, candidate_ids: list[str]
     ) -> dict[str, float]:
-        """Calculate relation factor for each candidate relative to an anchor node.
-
-        relation_factor(anchor → candidate) = edges_between(anchor, candidate) / total_edges(anchor)
-
-        Args:
-            anchor_id: The primary/anchor node ID (typically the most relevant query result)
-            candidate_ids: List of candidate node IDs to score
-
-        Returns:
-            Dict mapping candidate_id → relation_factor (0.0 to 1.0)
-        """
+        """Calculate relation factor for each candidate relative to an anchor node."""
         if not candidate_ids:
             return {}
 
-        # Get total edge count for anchor
         cursor = self.sqlite.execute(
             "SELECT COUNT(*) FROM edges WHERE source = ? OR target = ?",
             (anchor_id, anchor_id),
@@ -366,20 +342,7 @@ class GraphStore:
         return factors
 
     def enrich_context_nodes(self, nodes: list[GraphNode]) -> list[GraphNode]:
-        """Set relation_factor on each node and re-sort by combined score.
-
-        Uses the first node as the anchor (highest similarity). Combined score:
-            importance * (1 + relation_factor)
-
-        Nodes with more edges to the anchor get boosted (up to 2x).
-        Nodes with zero relation factor keep their original importance.
-
-        Args:
-            nodes: List of GraphNode objects (first node is treated as anchor)
-
-        Returns:
-            The same list with relation_factor set and re-sorted by combined score
-        """
+        """Set relation_factor on each node and re-sort by combined score."""
         if len(nodes) <= 1:
             for n in nodes:
                 n.relation_factor = 1.0
@@ -392,7 +355,6 @@ class GraphStore:
         for node in nodes:
             node.relation_factor = factors.get(node.id, 0.0)
 
-        # Re-sort by combined score: importance * (1 + relation_factor)
         nodes.sort(
             key=lambda n: n.metadata.importance_score * (1 + (n.relation_factor or 0.0)),
             reverse=True,
@@ -403,187 +365,115 @@ class GraphStore:
     def calculate_importance(
         self, node_id: str, lambda_decay: float = 0.05, time_unit_days: float = 1.0
     ) -> float:
-        """Calculate importance score S = (C_node / C_max) * e^(-lambda * delta_t).
-
-        Returns a value in [0.0, 1.0].
-        """
+        """Calculate importance score S = (C_node / C_max) * e^(-lambda * delta_t)."""
         node = self.get_node(node_id)
         if not node:
             return 0.0
 
-        # Get max connections across all nodes, counting both directions
-        # (same method used to track connection_count per node)
         cursor = self.sqlite.execute("""
             SELECT MAX(cnt) FROM (
                 SELECT COUNT(*) as cnt FROM (
                     SELECT source AS node_id FROM edges
                     UNION ALL
                     SELECT target AS node_id FROM edges
-                ) GROUP BY node_id
+                )
+                GROUP BY node_id
             )
         """)
         c_max = cursor.fetchone()[0] or 1
-
         c_node = node.metadata.connection_count
-        delta_t = (time.time() - node.metadata.last_interaction) / (86400 * time_unit_days)
 
-        score = (c_node / c_max) * math.exp(-lambda_decay * delta_t)
-        return min(score, 1.0)
+        age_seconds = time.time() - node.metadata.last_interaction
+        age_days = age_seconds / (86400 * time_unit_days)
+
+        return (c_node / c_max) * math.exp(-lambda_decay * age_days)
+
+    def update_importance_scores(self) -> None:
+        """Recalculate and persist importance scores for all nodes."""
+        result = self.collection.get(include=["metadatas"])
+        if not result["ids"]:
+            return
+
+        for node_id, metadata in zip(result["ids"], result["metadatas"]):
+            if metadata is None:
+                continue
+            metadata["importance_score"] = self.calculate_importance(node_id)
+            self.collection.update(ids=[node_id], metadatas=[metadata])
 
     def delete_node(self, node_id: str) -> DeleteNodeResult:
-        """Delete a node with type-aware cascade behavior.
-
-        - Concept deletes: also delete all directly-connected first-layer neighbor
-          nodes whose type is TAG. Those tags are deleted even if shared with other
-          nodes. All edges attached to the deleted tags are also removed.
-        - Non-concept deletes (tag/entity): only delete the node and its own edges,
-          preserving current behavior.
-
-        First-layer means direct neighbors only — no recursion beyond one hop.
-        Uses neighbor node type == TAG, not relation_type filtering.
-
-        Args:
-            node_id: The ID of the primary node to delete.
-
-        Returns:
-            DeleteNodeResult with deleted primary node id, deleted tag ids (for
-            concept deletes), and total edges deleted count.
-        """
-        # Load the node to determine its type
+        """Delete a node and, for concept deletes, its first-layer tag neighbors."""
         node = self.get_node(node_id)
         if node is None:
-            # Return a result consistent with "nothing found" — caller should
-            # already have raised 404; this method always succeeds structurally.
             return DeleteNodeResult(deleted_node_id=node_id, deleted_tag_ids=[], deleted_edges_count=0)
 
+        deleted_tag_ids: list[str] = []
+        nodes_to_delete: list[str] = [node_id]
+
         if node.metadata.type == NodeType.CONCEPT:
-            return self._delete_concept_with_tags(node_id)
-        else:
-            edges_deleted = self.delete_node_with_edges(node_id)
-            return DeleteNodeResult(
-                deleted_node_id=node_id,
-                deleted_tag_ids=[],
-                deleted_edges_count=edges_deleted,
-            )
+            for neighbor_node, _edge in self.get_connected_context([node_id]).get(node_id, []):
+                if neighbor_node.metadata.type == NodeType.TAG:
+                    deleted_tag_ids.append(neighbor_node.id)
+                    nodes_to_delete.append(neighbor_node.id)
 
-    def _delete_concept_with_tags(self, node_id: str) -> DeleteNodeResult:
-        """Delete a concept node and all its first-layer tag neighbors.
+        deleted_edges_count = 0
+        for nid in nodes_to_delete:
+            deleted_edges_count += self._delete_edges_for_node(nid)
 
-        Collects direct neighbors that are TAG nodes, deletes all edges for the
-        primary node and those tags, then deletes both the primary node and the
-        collected tag nodes from Chroma.
-        """
-        # Collect first-layer neighbors that are tags
-        tag_ids_to_delete: list[str] = []
-        edges = self.get_edges(node_id)
-        for edge in edges:
-            neighbor_id = edge.target if edge.source == node_id else edge.source
-            neighbor = self.get_node(neighbor_id)
-            if neighbor is not None and neighbor.metadata.type == NodeType.TAG:
-                tag_ids_to_delete.append(neighbor_id)
-
-        # Pre-count ALL edges before deleting any, to avoid undercounting
-        # (edges shared with concept would be gone by the time we check tags)
-        all_node_ids = [node_id] + tag_ids_to_delete
-        edge_count = 0
-        for nid in all_node_ids:
-            cursor = self.sqlite.execute(
-                "SELECT COUNT(*) FROM edges WHERE source = ? OR target = ?",
-                (nid, nid),
-            )
-            edge_count += cursor.fetchone()[0]
-
-        # Now actually delete all edges for all nodes (this updates neighbor counts)
-        for nid in all_node_ids:
-            self.delete_edges_for_node(nid)
-
-        # Delete all nodes from Chroma
-        if tag_ids_to_delete:
-            self.collection.delete(ids=tag_ids_to_delete)
-        self.collection.delete(ids=[node_id])
+        self.collection.delete(ids=nodes_to_delete)
 
         return DeleteNodeResult(
             deleted_node_id=node_id,
-            deleted_tag_ids=tag_ids_to_delete,
-            deleted_edges_count=edge_count,
+            deleted_tag_ids=deleted_tag_ids,
+            deleted_edges_count=deleted_edges_count,
         )
 
-    def delete_node_with_edges(self, node_id: str) -> int:
-        """Delete a node and all its connected edges.
+    def _delete_edges_for_node(self, node_id: str) -> int:
+        """Delete all edges connected to a node and update surviving neighbors' counts."""
+        edges = self.get_edges(node_id)
+        neighbors_to_update: set[str] = set()
+        for edge in edges:
+            neighbor = edge.target if edge.source == node_id else edge.source
+            neighbors_to_update.add(neighbor)
 
-        This is the canonical delete operation: it removes the node from ChromaDB
-        and cascade-deletes all edges involving that node from SQLite.
-        Neighbor connection counts are updated after deletion.
-
-        Args:
-            node_id: The ID of the node to delete.
-
-        Returns:
-            Number of edges deleted.
-        """
-        # First delete all edges (this also updates neighbor counts)
-        edges_deleted = self.delete_edges_for_node(node_id)
-        # Then delete the node itself from ChromaDB
-        self.collection.delete(ids=[node_id])
-        return edges_deleted
-
-    def delete_edges_for_node(self, node_id: str) -> int:
-        """Delete all edges connected to a node and update neighbor connection counts.
-
-        Returns the number of edges deleted.
-        """
-        # Find all neighbors before deleting edges
-        cursor = self.sqlite.execute(
-            "SELECT DISTINCT source FROM edges WHERE target = ? "
-            "UNION "
-            "SELECT DISTINCT target FROM edges WHERE source = ?",
-            (node_id, node_id),
-        )
-        neighbor_ids = [row[0] for row in cursor.fetchall() if row[0] != node_id]
-
-        # Delete all edges for this node
         cursor = self.sqlite.execute(
             "DELETE FROM edges WHERE source = ? OR target = ?",
             (node_id, node_id),
         )
-        deleted = cursor.rowcount
         self.sqlite.commit()
+        deleted_count = cursor.rowcount if cursor.rowcount != -1 else len(edges)
 
-        # Update connection counts for surviving neighbors
-        for nid in neighbor_ids:
-            self._update_connection_count(nid)
+        for neighbor_id in neighbors_to_update:
+            if self.get_node(neighbor_id) is not None:
+                self._update_connection_count(neighbor_id)
 
-        return deleted
-
-    def update_interaction(self, node_id: str) -> None:
-        """Update the last_interaction timestamp for a node."""
-        result = self.collection.get(ids=[node_id], include=["metadatas"])
-        if result["metadatas"]:
-            metadata = result["metadatas"][0]
-            metadata["last_interaction"] = time.time()
-            self.collection.update(ids=[node_id], metadatas=[metadata])
+        return deleted_count
 
     def get_stats(self) -> dict[str, Any]:
-        """Get statistics about the knowledge graph."""
-        node_count = self.collection.count()
-        cursor = self.sqlite.execute("SELECT COUNT(*) FROM edges")
-        edge_count = cursor.fetchone()[0]
-
+        """Get basic statistics about the graph."""
         result = self.collection.get(include=["metadatas"])
-        metadatas = result["metadatas"] or []
-        tag_count = sum(1 for m in metadatas if m.get("type") == NodeType.TAG.value)
-        entity_count = sum(1 for m in metadatas if m.get("type") == NodeType.ENTITY.value)
-        concept_count = node_count - tag_count - entity_count
+        total_nodes = len(result["ids"])
 
-        avg_connections = 0.0
-        if node_count > 0:
-            avg_connections = (edge_count * 2) / node_count
+        concept_nodes = 0
+        tag_nodes = 0
+        entity_nodes = 0
+        for metadata in result["metadatas"]:
+            if not metadata:
+                continue
+            node_type = metadata.get("type")
+            if node_type == NodeType.CONCEPT.value:
+                concept_nodes += 1
+            elif node_type == NodeType.TAG.value:
+                tag_nodes += 1
+            elif node_type == NodeType.ENTITY.value:
+                entity_nodes += 1
+
+        cursor = self.sqlite.execute("SELECT COUNT(*) FROM edges")
+        total_edges = cursor.fetchone()[0]
 
         return {
-            "total_nodes": node_count,
-            "total_edges": edge_count,
-            "tag_nodes": tag_count,
-            "entity_nodes": entity_count,
-            "concept_nodes": concept_count,
-            "avg_connections": round(avg_connections, 2),
+            "total_nodes": total_nodes,
+            "concept_nodes": concept_nodes,
+            "tag_nodes": tag_nodes,
+            "entity_nodes": entity_nodes,
+            "total_edges": total_edges,
         }

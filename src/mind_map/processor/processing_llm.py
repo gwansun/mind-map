@@ -786,3 +786,47 @@ def get_processing_llm(
         interactive=interactive,
         temperature=temperature,
     )
+
+
+def get_filter_llm(
+    model_name: str | None = None,
+    auto_pull: bool | None = None,
+) -> Any:
+    """Get LLM specifically for the filter path (phi3.5-only, no cloud-auto).
+
+    This function bypasses cloud-auto routing and only uses Ollama phi3.5.
+    It is used by the filter step in the ingestion pipeline.
+
+    The fallback chain for filter is handled by FilterAgentWithFallback:
+        phi3.5 via LangChain -> OpenClaw MiniMax CLI -> heuristic
+
+    Args:
+        model_name: Ollama model to use (defaults to phi3.5 from config)
+        auto_pull: Whether to auto-pull if model not available (uses config if None)
+
+    Returns:
+        ChatOllama instance or None if Ollama is unavailable
+    """
+    from mind_map.core.config import load_config
+
+    config = load_config()
+    processing_config = config.get("processing_llm", {})
+
+    if auto_pull is None:
+        auto_pull = processing_config.get("auto_pull", False)
+
+    # Always use phi3.5 or configured model for filter — no cloud routing
+    target_model = model_name or processing_config.get("model", DEFAULT_PROCESSING_MODEL)
+
+    if not check_ollama_available():
+        return None
+
+    available_model = ensure_model_available(
+        target_model,
+        auto_pull=auto_pull,
+        interactive=False,
+    )
+    if available_model is None:
+        return None
+
+    return get_ollama_llm(available_model, auto_pull=False)

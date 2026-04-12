@@ -430,15 +430,19 @@ def memo(
 
     # Try to get LLM if requested
     llm = None
+    filter_llm = None
     if use_llm:
-        from mind_map.processor.processing_llm import get_processing_llm
+        from mind_map.processor.processing_llm import get_filter_llm, get_processing_llm
+        # filter_llm: phi3.5 only (no cloud-auto) for filter path
+        filter_llm = get_filter_llm(model_name=model)
+        # extraction uses general processing_llm (cloud-auto with Ollama fallback)
         llm = get_processing_llm(model_name=model)
-        if not llm:
+        if not filter_llm and not llm:
             console.print("[dim]LLM not available, using heuristic processing[/dim]")
 
     console.print("[yellow]Processing memo...[/yellow]")
 
-    success, message, node_ids = ingest_memo(text, store, llm=llm, source_id=source)
+    success, message, node_ids = ingest_memo(text, store, llm=llm, source_id=source, filter_llm=filter_llm)
 
     if success:
         console.print(f"[green]{message}[/green]")
@@ -567,10 +571,13 @@ def ask(
     # Step 5: Process Q&A pair through LLM(B) pipeline to extract and store knowledge
     from mind_map.app.pipeline import ingest_memo
     from mind_map.core.schemas import Edge
-    from mind_map.processor.processing_llm import get_processing_llm
+    from mind_map.processor.processing_llm import get_filter_llm, get_processing_llm
 
+    # filter_llm: phi3.5 only (no cloud-auto) for filter path
+    # extraction uses general processing_llm (cloud-auto with Ollama fallback)
+    filter_llm = get_filter_llm(model_name=model)
     processing_llm = get_processing_llm(model_name=model)
-    if processing_llm:
+    if processing_llm or filter_llm:
         console.print("[dim]Summarizing Q&A with processing LLM...[/dim]")
     else:
         console.print("[dim]Processing LLM not available, using heuristic extraction...[/dim]")
@@ -581,6 +588,7 @@ def ask(
         store=store,
         llm=processing_llm,
         source_id=f"qa_{query[:50]}",
+        filter_llm=filter_llm,
     )
 
     # Step 6: Link Q&A nodes to context nodes if any existed

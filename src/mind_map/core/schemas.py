@@ -51,25 +51,23 @@ class Edge(BaseModel):
 
 
 class FilterDecision(BaseModel):
-    """LLM(B) filter agent decision on incoming data."""
+    """Memo novelty decision on incoming data."""
 
-    action: Literal["keep", "discard"] = Field(description="Whether to keep or discard the data")
+    action: Literal["new", "duplicate", "discard"] = Field(
+        description="Whether the memo is new knowledge, a duplicate, or should be discarded"
+    )
     reason: str = Field(description="Explanation for the decision")
     summary: str | None = Field(
-        default=None, description="Summarized content if action is keep"
+        default=None, description="Summarized/cleaned content if action is new"
     )
 
 
-class ExistingLink(BaseModel):
-    """A link from a new concept to an existing graph node, drawn from retrieval context."""
+class RetrievalContext(BaseModel):
+    """Retrieved context used by the memo pipeline."""
 
-    target_id: str = Field(
-        description="ID of an existing graph node (must come from the retrieval context provided during extraction)"
-    )
-    relation_type: str = Field(
-        default="related_context",
-        description="Type of relation to the existing node",
-    )
+    concepts: list[GraphNode] = Field(default_factory=list, description="Retrieved concept candidates")
+    entities: list[GraphNode] = Field(default_factory=list, description="First-hop retrieved entity references")
+    tags: list[GraphNode] = Field(default_factory=list, description="First-hop retrieved tag references")
 
 
 class ExtractionResult(BaseModel):
@@ -80,10 +78,6 @@ class ExtractionResult(BaseModel):
     entities: list[str] = Field(default_factory=list, description="Extracted entities")
     relationships: list[tuple[str, str, str]] = Field(
         default_factory=list, description="(source, relation, target) tuples"
-    )
-    existing_links: list[ExistingLink] = Field(
-        default_factory=list,
-        description="Links from this concept to existing retrieved nodes (IDs must come from retrieval context)",
     )
 
     @field_validator("relationships", mode="before")

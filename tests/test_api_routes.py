@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mind_map.core.schemas import Edge, NodeType
+from mind_map.app.pipeline import ingest_memo
 from mind_map.rag.graph_store import GraphStore
 
 
@@ -33,6 +34,21 @@ def client(temp_data_dir: Path, mock_store: GraphStore):
         from mind_map.app.api.routes import app
         with TestClient(app) as test_client:
             yield test_client
+
+
+class TestMemoRouteBehavior:
+    """Tests for memo ingestion behavior through shared route dependencies."""
+
+    def test_ingest_duplicate_returns_no_new_nodes(self, mock_store: GraphStore):
+        text = "Python is a programming language used for web development and data science."
+        first_success, _, first_ids = ingest_memo(text, mock_store)
+        second_success, second_message, second_ids = ingest_memo(text, mock_store)
+
+        assert first_success is True
+        assert len(first_ids) > 0
+        assert second_success is False
+        assert "Skipped duplicate" in second_message
+        assert second_ids == []
 
 
 class TestDeleteNode:
@@ -88,8 +104,8 @@ class TestDeleteNode:
         # node_center is a concept, so node_1 (TAG) is also deleted
         assert response.json()["node_id"] == "node_center"
         assert "node_1" in response.json()["deleted_tag_ids"]
-        # Edges: concept-1, concept-2, 3-concept, concept-1tag = 4 edges total
-        assert response.json()["deleted_edges_count"] == 4
+        # Only three distinct edges existed and all should be removed
+        assert response.json()["deleted_edges_count"] == 3
 
         # Center node gone
         assert mock_store.get_node("node_center") is None

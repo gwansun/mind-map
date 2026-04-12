@@ -173,6 +173,36 @@ class TestGetConnectedContext:
         assert ordered_ids == ["node_c", "node_a", "node_b"]
 
 
+class TestFirstHopNeighbors:
+    """Tests for get_first_hop_neighbors method."""
+
+    def test_returns_only_entity_and_tag_neighbors(self, temp_store: GraphStore):
+        temp_store.add_node("concept_a", "Concept A", NodeType.CONCEPT)
+        temp_store.add_node("entity_a", "Entity A", NodeType.ENTITY)
+        temp_store.add_node("tag_a", "#tag", NodeType.TAG)
+        temp_store.add_node("concept_b", "Concept B", NodeType.CONCEPT)
+        temp_store.add_edge(Edge(source="concept_a", target="entity_a", relation_type="mentions"))
+        temp_store.add_edge(Edge(source="concept_a", target="tag_a", relation_type="tagged_as"))
+        temp_store.add_edge(Edge(source="concept_a", target="concept_b", relation_type="related_context"))
+
+        neighbors = temp_store.get_first_hop_neighbors(["concept_a"])
+        neighbor_ids = {n.id for n in neighbors}
+
+        assert neighbor_ids == {"entity_a", "tag_a"}
+
+    def test_deduplicates_shared_neighbors(self, temp_store: GraphStore):
+        temp_store.add_node("concept_a", "Concept A", NodeType.CONCEPT)
+        temp_store.add_node("concept_b", "Concept B", NodeType.CONCEPT)
+        temp_store.add_node("entity_shared", "Shared", NodeType.ENTITY)
+        temp_store.add_edge(Edge(source="concept_a", target="entity_shared", relation_type="mentions"))
+        temp_store.add_edge(Edge(source="concept_b", target="entity_shared", relation_type="mentions"))
+
+        neighbors = temp_store.get_first_hop_neighbors(["concept_a", "concept_b"])
+        neighbor_ids = [n.id for n in neighbors]
+
+        assert neighbor_ids == ["entity_shared"]
+
+
 class TestGetEdges:
     """Tests for get_edges method."""
 
@@ -214,7 +244,7 @@ class TestDeleteNodeTypeAware:
 
         assert result.deleted_node_id == "concept"
         assert set(result.deleted_tag_ids) == {"tag1", "tag2"}
-        assert result.deleted_edges_count == 4  # 2 edges for concept + 2 for each tag (no shared)
+        assert result.deleted_edges_count == 2  # only the two concept-tag edges existed
 
         assert temp_store.get_node("concept") is None
         assert temp_store.get_node("tag1") is None
