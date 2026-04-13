@@ -65,7 +65,7 @@ def show_help() -> None:
     init_table.add_column("Short", style="dim", width=8)
     init_table.add_column("Description")
 
-    init_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: ./data]")
+    init_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
     init_table.add_row("--with-ollama", "-o", "Also initialize Ollama with selected model")
     console.print(init_table)
 
@@ -78,7 +78,7 @@ def show_help() -> None:
 
     memo_table.add_row("TEXT", "", "Text to ingest (required argument)")
     memo_table.add_row("--source TEXT", "-s", "Source identifier for the note")
-    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: ./data]")
+    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
     memo_table.add_row("--llm / --no-llm", "", "Use LLM for processing [default: --llm]")
     memo_table.add_row("--model TEXT", "-m", "Specific Ollama model to use")
     console.print(memo_table)
@@ -92,7 +92,7 @@ def show_help() -> None:
 
     ask_table.add_row("QUERY", "", "Question to ask (required argument)")
     ask_table.add_row("--depth INT", "-d", "Graph traversal depth [default: 2]")
-    ask_table.add_row("--data-dir PATH", "", "Directory for database storage [default: ./data]")
+    ask_table.add_row("--data-dir PATH", "", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
     ask_table.add_row("--model TEXT", "-m", "Specific processing model to use")
     console.print(ask_table)
 
@@ -103,7 +103,7 @@ def show_help() -> None:
     stats_table.add_column("Short", style="dim", width=8)
     stats_table.add_column("Description")
 
-    stats_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: ./data]")
+    stats_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
     console.print(stats_table)
 
     # Serve Command Options
@@ -264,7 +264,7 @@ def model_help() -> None:
 def init(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
     with_ollama: Annotated[
         bool, typer.Option("--with-ollama", "-o", help="Also initialize Ollama with phi3.5")
     ] = False,
@@ -409,7 +409,7 @@ def memo(
     ] = None,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
     use_llm: Annotated[
         bool, typer.Option("--llm/--no-llm", help="Use LLM for processing (requires Ollama)")
     ] = True,
@@ -459,7 +459,7 @@ def retrieve(
     n_results: Annotated[int, typer.Option("--n-results", "-n", help="Number of results to return")] = 5,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
     show_context: Annotated[
         bool, typer.Option("--show-context/--no-context", help="Show connected nodes for each result")
     ] = True,
@@ -515,7 +515,7 @@ def ask(
     depth: Annotated[int, typer.Option("--depth", "-d", help="Graph traversal depth")] = 2,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
     model: Annotated[
         str | None, typer.Option("--model", "-m", help="Specific processing model to use")
     ] = None,
@@ -611,7 +611,7 @@ def ask(
 def stats(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
 ) -> None:
     """Display knowledge graph statistics."""
     from mind_map.rag.graph_store import GraphStore
@@ -642,7 +642,7 @@ def stats(
 def prune(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
     percent: Annotated[
         float, typer.Option("--percent", "-p", help="Percentage of nodes to prune (0.0-1.0)")
     ] = 0.1,
@@ -736,7 +736,7 @@ def prune(
 def serve(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = Path("./data"),
+    ] = get_data_dir(),
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8000,
 ) -> None:

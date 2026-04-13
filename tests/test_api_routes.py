@@ -172,6 +172,17 @@ class TestDeleteNode:
         assert mock_store.get_node("tag") is not None
         assert mock_store.get_node("concept") is not None
 
+    def test_delete_node_with_slashes_in_id(self, client: TestClient, mock_store: GraphStore):
+        """Test deleting a node whose ID contains slashes works."""
+        node_id = "entity_/users/gwansun/desktop/projects/ontologist"
+        mock_store.add_node(node_id, "/Users/gwansun/Desktop/projects/ontologist", NodeType.ENTITY)
+
+        response = client.delete("/node/entity_%2Fusers%2Fgwansun%2Fdesktop%2Fprojects%2Fontologist")
+
+        assert response.status_code == 200
+        assert response.json()["node_id"] == node_id
+        assert mock_store.get_node(node_id) is None
+
     def test_delete_concept_removes_shared_tags(self, client: TestClient, mock_store: GraphStore):
         """Deleting a concept also removes shared tags even if another concept uses them."""
         mock_store.add_node("concept_a", "Concept A", NodeType.CONCEPT)
@@ -237,6 +248,18 @@ class TestGetNode:
         assert len(data["edges"]) == 1
         assert data["edges"][0]["relation_type"] == "related_to"
         assert "importance_score" in data
+
+    def test_get_node_with_slashes_in_id(self, client: TestClient, mock_store: GraphStore):
+        """Test fetching a node whose ID contains slashes works."""
+        node_id = "entity_plan/meta/mind_map_memos.md"
+        mock_store.add_node(node_id, "plan/meta/mind_map_memos.md", NodeType.ENTITY)
+
+        response = client.get("/node/entity_plan%2Fmeta%2Fmind_map_memos.md")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["node"]["id"] == node_id
+        assert data["node"]["document"] == "plan/meta/mind_map_memos.md"
 
     def test_get_node_not_found(self, client: TestClient):
         """Test fetching a non-existent node returns 404."""

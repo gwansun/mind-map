@@ -122,7 +122,7 @@ async def get_graph() -> GraphResponse:
     return GraphResponse(nodes=nodes, edges=edges)
 
 
-@app.get("/node/{node_id}")
+@app.get("/node/{node_id:path}")
 async def get_node(node_id: str) -> dict[str, Any]:
     """Get detailed view of a specific node."""
     store = get_store()
@@ -153,7 +153,7 @@ class DeleteNodeResponse(BaseModel):
     deleted_edges_count: int
 
 
-@app.delete("/node/{node_id}", response_model=DeleteNodeResponse)
+@app.delete("/node/{node_id:path}", response_model=DeleteNodeResponse)
 async def delete_node(node_id: str) -> DeleteNodeResponse:
     """Delete a node and all its connected edges.
 

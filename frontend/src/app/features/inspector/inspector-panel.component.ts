@@ -429,11 +429,20 @@ export class InspectorPanelComponent {
     this.isLoading.set(true);
     try {
       const details = await this.apiService.getNode(nodeId).toPromise();
+
+      if (this._node?.id !== nodeId) {
+        return;
+      }
+
       if (details) {
         this.edges.set(details.edges);
         this.importanceScore.set(details.importance_score);
       }
     } catch (error) {
+      if (this._node?.id !== nodeId) {
+        return;
+      }
+
       this.edges.set([]);
       this.importanceScore.set(0);
 
@@ -445,7 +454,9 @@ export class InspectorPanelComponent {
 
       console.error('Failed to load node details:', error);
     } finally {
-      this.isLoading.set(false);
+      if (this._node?.id === nodeId || this._node === null) {
+        this.isLoading.set(false);
+      }
     }
   }
 

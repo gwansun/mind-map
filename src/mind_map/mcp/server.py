@@ -14,6 +14,7 @@ if src_path not in sys.path:
 
 from fastmcp import FastMCP
 from mind_map.app.pipeline import ingest_memo
+from mind_map.core.config import get_data_dir
 from mind_map.core.schemas import Edge, NodeType
 from mind_map.rag.graph_store import GraphStore
 from mind_map.processor.processing_llm import (
@@ -28,9 +29,7 @@ from mind_map.rag.llm_status import get_llm_status
 mcp = FastMCP("MindMap")
 
 # Setup project paths
-# Default to project root 'data' folder, but allow override via environment variable
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-DEFAULT_DATA_DIR = Path(os.getenv("MIND_MAP_DATA_DIR", str(PROJECT_ROOT / "data")))
+DEFAULT_DATA_DIR = get_data_dir()
 
 # Dictionary to manage multiple stores
 # workspace_id -> GraphStore instance

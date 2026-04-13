@@ -31,7 +31,8 @@ def load_config() -> dict[str, Any]:
         return {}
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DATA_DIR = Path("./data")
+CANONICAL_DATA_DIR = Path("/Users/gwansun/.openclaw/workspace/projects/mind-map/data")
+DEFAULT_DATA_DIR = CANONICAL_DATA_DIR
 
 
 def get_data_dir(explicit: Path | None = None) -> Path:
@@ -41,8 +42,8 @@ def get_data_dir(explicit: Path | None = None) -> Path:
     """
     import os
     if explicit is not None:
-        return explicit
+        return explicit.expanduser().resolve()
     env_dir = os.getenv("MIND_MAP_DATA_DIR")
     if env_dir:
-        return Path(env_dir)
-    return DEFAULT_DATA_DIR
+        return Path(env_dir).expanduser().resolve()
+    return DEFAULT_DATA_DIR.expanduser().resolve()
