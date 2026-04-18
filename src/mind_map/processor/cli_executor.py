@@ -257,11 +257,54 @@ def run_cli_json(
     )
 
 
+def _extract_json_payload_from_chat_completion(data: dict[str, Any]) -> dict[str, Any] | None:
+    """Unwrap an OpenAI-style chat completion envelope into the assistant JSON payload."""
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+
+    first = choices[0]
+    if not isinstance(first, dict):
+        return None
+
+    message = first.get("message")
+    if not isinstance(message, dict):
+        return None
+
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        return None
+
+    text = content.strip()
+    if text.startswith("```json"):
+        text = text[len("```json"):].strip()
+    elif text.startswith("```"):
+        text = text[len("```"):].strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return None
+
+    try:
+        payload = json.loads(text[start:end + 1], strict=False)
+    except json.JSONDecodeError:
+        return None
+
+    return payload if isinstance(payload, dict) else None
+
+
 def run_filter_cli(command_template: str, prompt: str) -> dict[str, Any]:
     """Run filter CLI command. Same as run_cli_json but with filter-specific timeout."""
-    return run_cli_json(command_template, prompt, timeout=_FILTER_EXTRACTION_TIMEOUT)
+    data = run_cli_json(command_template, prompt, timeout=_FILTER_EXTRACTION_TIMEOUT)
+    payload = _extract_json_payload_from_chat_completion(data)
+    return payload or data
 
 
 def run_extraction_cli(command_template: str, prompt: str) -> dict[str, Any]:
     """Run extraction CLI command. Same as run_cli_json but with extraction-specific timeout."""
-    return run_cli_json(command_template, prompt, timeout=_DEFAULT_EXTRACTION_TIMEOUT)
+    data = run_cli_json(command_template, prompt, timeout=_DEFAULT_EXTRACTION_TIMEOUT)
+    payload = _extract_json_payload_from_chat_completion(data)
+    return payload or data

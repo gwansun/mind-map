@@ -86,16 +86,29 @@ class KnowledgeProcessor:
         self._parser = JsonOutputParser(pydantic_object=ExtractionResult)
         self._chain = EXTRACTION_PROMPT | llm | self._parser if llm else None
 
-    def _parse_extraction_result(self, raw: dict[str, Any]) -> ExtractionResult:
+    def _parse_extraction_result(self, raw: dict[str, Any], *, fallback_text: str) -> ExtractionResult:
         summary = raw.get("summary", "")
+        if not isinstance(summary, str) or not summary.strip():
+            summary = fallback_text.strip()
+
         tags = raw.get("tags", [])
+        if isinstance(tags, list):
+            tags = [tag for tag in tags if isinstance(tag, str) and tag.strip().startswith("#")]
+        else:
+            tags = []
+
         entities = raw.get("entities", [])
+        if isinstance(entities, list):
+            entities = [entity for entity in entities if isinstance(entity, str) and entity.strip()]
+        else:
+            entities = []
+
         relationships = raw.get("relationships", [])
 
         return ExtractionResult(
             summary=summary,
-            tags=tags if isinstance(tags, list) else [],
-            entities=entities if isinstance(entities, list) else [],
+            tags=tags,
+            entities=entities,
             relationships=relationships,
         )
 
@@ -119,5 +132,5 @@ class KnowledgeProcessor:
             references=references,
         )
         raw = _call_custom_extraction(build_cli_template(self._target), prompt)
-        return self._parse_extraction_result(raw)
+        return self._parse_extraction_result(raw, fallback_text=text)
 
