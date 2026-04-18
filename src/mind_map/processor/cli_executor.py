@@ -23,6 +23,7 @@ _DEFAULT_EXTRACTION_TIMEOUT = 60.0
 _FILTER_EXTRACTION_TIMEOUT = 60.0
 _DEFAULT_OPENCLAW_MESSAGE = "info"
 _DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11435/v1"
+_LOCAL_MAX_COMPLETION_TOKENS = 1200
 
 
 @dataclass(frozen=True)
@@ -101,22 +102,15 @@ def build_local_command(target: LocalTarget) -> str:
     The prompt will be appended as the last argument and injected into the JSON
     payload under messages[0].content.
     """
-    escaped_base = shlex.quote(target.base_url.rstrip("/"))
-    escaped_model = json.dumps(target.model)
-    payload_prefix = (
-        "{"
-        f'\"model\":{escaped_model},'
-        '\"messages\":[{\"role\":\"user\",\"content\":'
-    )
-    payload_suffix = "}]}"
     return (
         "python3 -c "
         + shlex.quote(
             "import json, sys, urllib.request; "
             f"base={target.base_url.rstrip('/')!r}; "
             f"model={target.model!r}; "
+            f"max_tokens={_LOCAL_MAX_COMPLETION_TOKENS!r}; "
             "prompt=sys.argv[1]; "
-            "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}] }).encode(); "
+            "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'response_format': {'type': 'json_object'}, 'max_tokens': max_tokens}).encode(); "
             "req=urllib.request.Request(base + '/chat/completions', data=body, headers={'Content-Type': 'application/json'}); "
             "resp=urllib.request.urlopen(req, timeout=60); "
             "sys.stdout.write(resp.read().decode())"

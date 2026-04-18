@@ -199,6 +199,9 @@ def _heuristic_extraction(text: str) -> dict[str, Any]:
 def create_storage_node(store: GraphStore):
     """Persist new memo extraction results to GraphStore."""
 
+    def _normalize_text(text: str) -> str:
+        return " ".join(text.lower().split())
+
     def storage_node(state: PipelineState) -> dict[str, Any]:
         if state.extraction is None or state.filter_decision is None or state.filter_decision.action != "new":
             return {}
@@ -215,6 +218,9 @@ def create_storage_node(store: GraphStore):
         )
         node_ids.append(concept_id)
 
+        linked_tag_ids: set[str] = set()
+        linked_entity_ids: set[str] = set()
+
         for tag in extraction.tags:
             tag_id = f"tag_{tag.lower().replace('#', '').replace(' ', '_')}"
             if store.get_node(tag_id) is None:
@@ -225,8 +231,7 @@ def create_storage_node(store: GraphStore):
                 )
             node_ids.append(tag_id)
             store.add_edge(Edge(source=concept_id, target=tag_id, relation_type="tagged_as"))
-
-        linked_entity_ids: set[str] = set()
+            linked_tag_ids.add(tag_id)
 
         for source_name, relation, target_name in extraction.relationships:
             source_eid = f"entity_{source_name.lower().replace(' ', '_')}"
@@ -260,6 +265,29 @@ def create_storage_node(store: GraphStore):
         if state.retrieval is not None:
             for concept in state.retrieval.concepts:
                 store.add_edge(Edge(source=concept_id, target=concept.id, relation_type="related_context"))
+
+            mention_text = _normalize_text(f"{state.raw_text}\n{extraction.summary}")
+
+            for tag_node in state.retrieval.tags:
+                tag_doc = tag_node.document.strip()
+                tag_key = tag_doc.lower().lstrip("#").strip()
+                if not tag_key:
+                    continue
+                if tag_node.id in linked_tag_ids:
+                    continue
+                if tag_key in mention_text:
+                    store.add_edge(Edge(source=concept_id, target=tag_node.id, relation_type="tagged_as"))
+                    linked_tag_ids.add(tag_node.id)
+
+            for entity_node in state.retrieval.entities:
+                entity_key = _normalize_text(entity_node.document)
+                if not entity_key:
+                    continue
+                if entity_node.id in linked_entity_ids:
+                    continue
+                if entity_key in mention_text:
+                    store.add_edge(Edge(source=concept_id, target=entity_node.id, relation_type="mentions"))
+                    linked_entity_ids.add(entity_node.id)
 
         return {"node_ids": node_ids}
 

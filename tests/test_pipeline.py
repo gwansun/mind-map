@@ -160,3 +160,61 @@ class TestStorageBehavior:
         assert len(mentions_edges) >= 1
         k8s_edge = next((e for e in mentions_edges if e.target == "entity_kubernetes"), None)
         assert k8s_edge is not None
+
+    def test_storage_links_retrieved_entity_when_mentioned_in_new_content(self, temp_store: GraphStore):
+        retrieved_entity = temp_store.add_node(
+            node_id="entity_mlx_lm",
+            document="MLX LM",
+            node_type=NodeType.ENTITY,
+        )
+        storage_node_fn = create_storage_node(temp_store)
+
+        extraction = ExtractionResult(
+            summary="MLX LM supports local inference on Mac devices.",
+            tags=[],
+            entities=[],
+            relationships=[],
+        )
+
+        state = PipelineState(
+            raw_text="MLX LM supports local inference on Mac devices.",
+            retrieval=RetrievalContext(concepts=[], entities=[retrieved_entity], tags=[]),
+            filter_decision=FilterDecision(action="new", reason="new", summary="MLX LM supports local inference on Mac devices."),
+            extraction=extraction,
+        )
+
+        result = storage_node_fn(state)
+        concept_id = result["node_ids"][0]
+        edges = temp_store.get_edges(concept_id)
+
+        mention_targets = {e.target for e in edges if e.relation_type == "mentions"}
+        assert "entity_mlx_lm" in mention_targets
+
+    def test_storage_links_retrieved_tag_when_mentioned_in_new_content(self, temp_store: GraphStore):
+        retrieved_tag = temp_store.add_node(
+            node_id="tag_quantization",
+            document="#quantization",
+            node_type=NodeType.TAG,
+        )
+        storage_node_fn = create_storage_node(temp_store)
+
+        extraction = ExtractionResult(
+            summary="This note discusses quantization for local MLX models.",
+            tags=[],
+            entities=[],
+            relationships=[],
+        )
+
+        state = PipelineState(
+            raw_text="This note discusses quantization for local MLX models.",
+            retrieval=RetrievalContext(concepts=[], entities=[], tags=[retrieved_tag]),
+            filter_decision=FilterDecision(action="new", reason="new", summary="This note discusses quantization for local MLX models."),
+            extraction=extraction,
+        )
+
+        result = storage_node_fn(state)
+        concept_id = result["node_ids"][0]
+        edges = temp_store.get_edges(concept_id)
+
+        tag_targets = {e.target for e in edges if e.relation_type == "tagged_as"}
+        assert "tag_quantization" in tag_targets
