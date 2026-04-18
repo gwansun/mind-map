@@ -1,4 +1,5 @@
 """LangGraph pipeline for memo ingestion with retrieval-first duplicate detection."""
+from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
@@ -14,6 +15,8 @@ from mind_map.core.schemas import (
     NodeType,
     RetrievalContext,
 )
+from mind_map.processor.cli_executor import CLIExecutionError
+from mind_map.processor.filter_agent import FilterAgent
 from mind_map.rag.graph_store import GraphStore
 
 
@@ -76,17 +79,14 @@ def create_retrieval_node(store: GraphStore):
     return retrieval_node
 
 
-def create_filter_node(filter_llm: Any | None = None):
+def create_filter_node(*, cli_template: str | None = None):
     """Create a filter node that decides discard/duplicate/new.
 
-    Filter evaluation order:
-        1. phi3.5 via FilterAgentWithFallback (LangChain) — if filter_llm provided
-        2. OpenClaw MiniMax CLI — via FilterAgentWithFallback fallback
-        3. Heuristic filter (final fallback)
+    When cli_template is set, that exact command is used as primary.
+    On CLI failure, the memo is rejected (no fallback).
+    When cli_template is None, uses built-in MiniMax CLI → heuristic.
     """
-    from mind_map.processor.filter_agent import FilterAgentWithFallback
-
-    agent_with_fallback = FilterAgentWithFallback(filter_llm) if filter_llm else None
+    agent = FilterAgent(cli_template=cli_template)
 
     def filter_node(state: PipelineState) -> dict[str, Any]:
         text = state.raw_text.strip()
@@ -97,40 +97,59 @@ def create_filter_node(filter_llm: Any | None = None):
         if heuristic_decision.action == "discard":
             return {"filter_decision": heuristic_decision}
 
-        # Try LLM chain: phi3.5 -> MiniMax CLI -> heuristic
-        if agent_with_fallback is not None:
-            try:
-                decision = agent_with_fallback.evaluate_sync(text, retrieved_concepts)
-                return {"filter_decision": decision}
-            except RuntimeError:
-                # Both phi3.5 and MiniMax failed — fall through to heuristic
-                pass
-
-        return {"filter_decision": heuristic_decision}
+        try:
+            decision = agent.evaluate_sync(text, retrieved_concepts)
+            return {"filter_decision": decision}
+        except CLIExecutionError as e:
+            # Custom CLI failed — reject the memo
+            return {
+                "error": str(e),
+                "filter_decision": FilterDecision(
+                    action="discard",
+                    reason=f"CLI command failed: {cli_template}",
+                    summary=None,
+                )
+            }
 
     return filter_node
 
 
-def create_extraction_node(llm: Any | None = None):
-    """Create an extraction node that extracts only for new memos."""
+def create_extraction_node(llm: Any | None = None, *, cli_template: str | None = None):
+    """Create an extraction node that extracts only for new memos.
+
+    When cli_template is set, that exact command is used as primary.
+    On CLI failure, the memo is rejected (no fallback).
+    When cli_template is None, uses built-in MiniMax → Ollama LangChain → heuristic.
+    """
 
     def extraction_node(state: PipelineState) -> dict[str, Any]:
         if state.filter_decision is None or state.filter_decision.action != "new":
             return {}
 
         text = state.filter_decision.summary or state.raw_text
-        references = []
+        references: list[GraphNode] = []
         if state.retrieval is not None:
             references = [*state.retrieval.entities, *state.retrieval.tags]
 
-        if llm is not None:
-            from mind_map.processor.knowledge_processor import KnowledgeProcessor
-            processor = KnowledgeProcessor(llm)
-            try:
-                result = processor.extract_with_references(text, references)
-                return {"extraction": result}
-            except Exception:
-                pass
+        from mind_map.processor.knowledge_processor import KnowledgeProcessor
+        processor = KnowledgeProcessor(llm, cli_template=cli_template)
+
+        try:
+            result = processor.extract_with_references(text, references)
+            return {"extraction": result}
+        except CLIExecutionError as e:
+            # Custom CLI failed — reject the memo
+            return {
+                "error": str(e),
+                "extraction": ExtractionResult(
+                    summary=text[:300] if len(text) > 300 else text,
+                    tags=[],
+                    entities=[],
+                    relationships=[],
+                ),
+            }
+        except Exception:
+            pass
 
         return _heuristic_extraction(text)
 
@@ -250,8 +269,11 @@ def should_continue_after_filter(state: PipelineState) -> str:
 
 def build_ingestion_pipeline(
     store: GraphStore,
+    *,
+    cli_template: str | None = None,
+    filter_cli_template: str | None = None,
+    extraction_cli_template: str | None = None,
     llm: Any | None = None,
-    filter_llm: Any | None = None,
 ) -> StateGraph:
     """Build the LangGraph pipeline for memo ingestion.
 
@@ -260,15 +282,22 @@ def build_ingestion_pipeline(
 
     Args:
         store: GraphStore instance for retrieval and storage
-        llm: General processing LLM (used for extraction, not filter)
-        filter_llm: Ollama LLM for filter step (phi3.5 via LangChain).
-                    If None, filter falls back to MiniMax CLI then heuristic.
+        cli_template: Single CLI command used for both filter and extraction.
+                     If set, the same command is used for both steps.
+                     On failure the memo is rejected (no fallback).
+                     e.g. "openclaw agent --agent minimax --message" or "ollama run gemma4"
+        filter_cli_template: [DEPRECATED] Use cli_template instead.
+        extraction_cli_template: [DEPRECATED] Use cli_template instead.
+        llm: Ollama LLM for extraction LangChain fallback (only used when cli_template is None).
     """
+    # Support deprecated separate templates for backward compat
+    shared_template = cli_template or filter_cli_template or extraction_cli_template
+
     workflow = StateGraph(PipelineState)
 
     workflow.add_node("retrieve", create_retrieval_node(store))
-    workflow.add_node("filter", create_filter_node(filter_llm))
-    workflow.add_node("extract", create_extraction_node(llm))
+    workflow.add_node("filter", create_filter_node(cli_template=shared_template))
+    workflow.add_node("extract", create_extraction_node(llm, cli_template=shared_template))
     workflow.add_node("store", create_storage_node(store))
 
     workflow.set_entry_point("retrieve")
@@ -279,7 +308,7 @@ def build_ingestion_pipeline(
         {
             "extract": "extract",
             "end": END,
-        }
+        },
     )
     workflow.add_edge("extract", "store")
     workflow.add_edge("store", END)
@@ -290,27 +319,41 @@ def build_ingestion_pipeline(
 def ingest_memo(
     text: str,
     store: GraphStore,
+    *,
+    cli_template: str | None = None,
+    filter_cli_template: str | None = None,
+    extraction_cli_template: str | None = None,
     llm: Any | None = None,
     source_id: str | None = None,
-    filter_llm: Any | None = None,
 ) -> tuple[bool, str, list[str]]:
     """Ingest a memo through the pipeline.
 
     Args:
         text: Raw memo text to process
         store: GraphStore instance
-        llm: General processing LLM for extraction step
+        cli_template: Single CLI command for both filter and extraction.
+                      On failure the memo is rejected (discarded).
+                      If None, uses built-in MiniMax → Ollama LangChain → heuristic.
+        filter_cli_template: [DEPRECATED] Use cli_template instead.
+        extraction_cli_template: [DEPRECATED] Use cli_template instead.
+        llm: Ollama LLM for extraction LangChain fallback.
+             Only used when cli_template is None.
         source_id: Optional source identifier for the memo
-        filter_llm: Ollama LLM for filter step (phi3.5). If None,
-                     uses MiniMax CLI fallback then heuristic.
     """
-    pipeline = build_ingestion_pipeline(store, llm, filter_llm=filter_llm)
+    # Support deprecated separate templates for backward compat
+    shared_template = cli_template or filter_cli_template or extraction_cli_template
+
+    pipeline = build_ingestion_pipeline(
+        store,
+        cli_template=shared_template,
+        llm=llm,
+    )
 
     initial_state = PipelineState(raw_text=text, source_id=source_id)
     final_state = pipeline.invoke(initial_state)
 
     if final_state.get("error"):
-        return False, final_state["error"], []
+        return False, f"Memo rejected: {final_state['error']}", []
 
     filter_decision = final_state.get("filter_decision")
     if filter_decision:

@@ -78,9 +78,9 @@ def show_help() -> None:
 
     memo_table.add_row("TEXT", "", "Text to ingest (required argument)")
     memo_table.add_row("--source TEXT", "-s", "Source identifier for the note")
-    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
-    memo_table.add_row("--llm / --no-llm", "", "Use LLM for processing [default: --llm]")
-    memo_table.add_row("--model TEXT", "-m", "Specific Ollama model to use")
+    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: ~/.openclaw/...]")
+    memo_table.add_row("--openclaw AGENT", "", 'Use OpenClaw agent for both filter+extraction, e.g. "minimax"')
+    memo_table.add_row("--ollama MODEL", "", 'Use Ollama model for both filter+extraction, e.g. "gemma4" (best-effort JSON parsing)')
     console.print(memo_table)
 
     # Ask Command Options
@@ -168,9 +168,9 @@ mind-map model list                     # List available models
 mind-map model set phi3.5 --persist     # Set and save model choice
 
 [dim]# Ingesting notes[/dim]
-mind-map memo "Python is great"         # Ingest with LLM processing
-mind-map memo "Note" --no-llm           # Ingest without LLM (heuristic)
-mind-map memo "Note" --model mistral    # Use specific model
+mind-map memo "Python is great"                              # Built-in MiniMax with fallback chain
+mind-map memo "Note" --openclaw minimax                      # openclaw agent --agent minimax --message
+mind-map memo "Note" --ollama gemma4                         # ollama run gemma4 (best-effort JSON parsing)
 
 [dim]# Querying[/dim]
 mind-map ask "What is Python?"          # Query knowledge graph
@@ -410,39 +410,67 @@ def memo(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
     ] = get_data_dir(),
-    use_llm: Annotated[
-        bool, typer.Option("--llm/--no-llm", help="Use LLM for processing (requires Ollama)")
-    ] = True,
-    model: Annotated[
-        str | None, typer.Option("--model", "-m", help="Specific Ollama model to use")
+    openclaw: Annotated[
+        str | None,
+        typer.Option(
+            "--openclaw",
+            help='OpenClaw agent to use for both filter and extraction, e.g. "minimax" '
+                 "expands to: openclaw agent --agent minimax --message"
+        ),
+    ] = None,
+    ollama: Annotated[
+        str | None,
+        typer.Option(
+            "--ollama",
+            help='Ollama model to use for both filter and extraction, e.g. "gemma4" '
+                 "expands to: ollama run gemma4"
+        ),
+    ] = None,
+    llm_cmd: Annotated[
+        str | None,
+        typer.Option(
+            "--llm-cmd",
+            help="Raw CLI command template escape hatch (mutually exclusive with --openclaw/--ollama). "
+                 "Prompt is appended as the last argument. "
+                 'Example: "openclaw agent --agent ollama --message"'
+        ),
     ] = None,
 ) -> None:
     """Ingest a note or thought into the knowledge graph."""
     from mind_map.app.pipeline import ingest_memo
+    from mind_map.processor.cli_executor import CLIExecutionError, resolve_cli_template
     from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
         raise typer.Exit(1)
 
+    try:
+        shared_cli = resolve_cli_template(openclaw=openclaw, ollama=ollama, llm_cmd=llm_cmd)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
     store = GraphStore(data_dir)
     store.initialize()
 
-    # Try to get LLM if requested
-    llm = None
-    filter_llm = None
-    if use_llm:
-        from mind_map.processor.processing_llm import get_filter_llm, get_processing_llm
-        # filter_llm: phi3.5 only (no cloud-auto) for filter path
-        filter_llm = get_filter_llm(model_name=model)
-        # extraction uses general processing_llm (cloud-auto with Ollama fallback)
-        llm = get_processing_llm(model_name=model)
-        if not filter_llm and not llm:
-            console.print("[dim]LLM not available, using heuristic processing[/dim]")
+    if shared_cli:
+        console.print(f"[dim]CLI: {shared_cli}[/dim]")
+    else:
+        console.print("[dim]Using built-in OpenClaw MiniMax (with fallback chain)[/dim]")
 
     console.print("[yellow]Processing memo...[/yellow]")
 
-    success, message, node_ids = ingest_memo(text, store, llm=llm, source_id=source, filter_llm=filter_llm)
+    success, message, node_ids = ingest_memo(
+        text,
+        store,
+        cli_template=shared_cli,
+        source_id=source,
+    )
+
+    if shared_cli and message.startswith("Memo rejected:"):
+        console.print(f"[red]{message}[/red]")
+        raise typer.Exit(1)
 
     if success:
         console.print(f"[green]{message}[/green]")
@@ -571,13 +599,11 @@ def ask(
     # Step 5: Process Q&A pair through LLM(B) pipeline to extract and store knowledge
     from mind_map.app.pipeline import ingest_memo
     from mind_map.core.schemas import Edge
-    from mind_map.processor.processing_llm import get_filter_llm, get_processing_llm
+    from mind_map.processor.processing_llm import get_processing_llm
 
-    # filter_llm: phi3.5 only (no cloud-auto) for filter path
     # extraction uses general processing_llm (cloud-auto with Ollama fallback)
-    filter_llm = get_filter_llm(model_name=model)
     processing_llm = get_processing_llm(model_name=model)
-    if processing_llm or filter_llm:
+    if processing_llm:
         console.print("[dim]Summarizing Q&A with processing LLM...[/dim]")
     else:
         console.print("[dim]Processing LLM not available, using heuristic extraction...[/dim]")
@@ -588,7 +614,6 @@ def ask(
         store=store,
         llm=processing_llm,
         source_id=f"qa_{query[:50]}",
-        filter_llm=filter_llm,
     )
 
     # Step 6: Link Q&A nodes to context nodes if any existed
