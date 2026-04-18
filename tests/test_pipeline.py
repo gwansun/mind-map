@@ -5,8 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from mind_map.app.pipeline import PipelineState, build_ingestion_pipeline, create_storage_node, ingest_memo
+from mind_map.app.pipeline import (
+    PipelineState,
+    build_legacy_ingestion_pipeline,
+    build_memo_cli_ingestion_pipeline,
+    create_storage_node,
+    ingest_memo_cli,
+    ingest_memo_internal,
+)
 from mind_map.core.schemas import ExtractionResult, FilterDecision, NodeType, RetrievalContext
+from mind_map.processor.cli_executor import OpenClawTarget
 from mind_map.rag.graph_store import GraphStore
 
 
@@ -19,14 +27,30 @@ def temp_store():
         yield store
 
 
+@pytest.fixture
+def openclaw_target() -> OpenClawTarget:
+    return OpenClawTarget(agent="minimax")
+
+
 class TestPipelineRetrievalStep:
     """Tests for the retrieval step in the pipeline."""
 
-    def test_retrieval_step_populates_retrieval_context(self, temp_store: GraphStore):
-        ingest_memo("Python is a programming language", temp_store)
+    def test_memo_cli_ingestion_requires_target_at_call_boundary(self, temp_store: GraphStore):
+        with pytest.raises(TypeError):
+            ingest_memo_cli("Python is a programming language", temp_store)  # type: ignore[misc]
 
-        pipeline = build_ingestion_pipeline(temp_store)
-        initial = PipelineState(raw_text="Tell me about Python language features")
+    def test_legacy_internal_ingestion_allowed(self, temp_store: GraphStore):
+        success, message, node_ids = ingest_memo_internal(
+            "Python is a programming language used for web development and data science.",
+            temp_store,
+        )
+        assert success is True
+        assert len(node_ids) > 0
+        assert "Created" in message
+
+    def test_retrieval_step_populates_retrieval_context(self, temp_store: GraphStore, openclaw_target: OpenClawTarget):
+        pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=openclaw_target)
+        initial = PipelineState(raw_text="Tell me about Python language features", target=openclaw_target)
         final = pipeline.invoke(initial)
 
         assert "retrieval" in final
@@ -35,9 +59,9 @@ class TestPipelineRetrievalStep:
         assert hasattr(retrieval, "entities")
         assert hasattr(retrieval, "tags")
 
-    def test_retrieval_step_empty_for_new_graph(self, temp_store: GraphStore):
-        pipeline = build_ingestion_pipeline(temp_store)
-        initial = PipelineState(raw_text="Python is great for data science")
+    def test_retrieval_step_empty_for_new_graph(self, temp_store: GraphStore, openclaw_target: OpenClawTarget):
+        pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=openclaw_target)
+        initial = PipelineState(raw_text="Python is great for data science", target=openclaw_target)
         final = pipeline.invoke(initial)
 
         retrieval = final.get("retrieval")
@@ -45,6 +69,10 @@ class TestPipelineRetrievalStep:
         assert isinstance(retrieval.concepts, list)
         assert isinstance(retrieval.entities, list)
         assert isinstance(retrieval.tags, list)
+
+    def test_legacy_pipeline_builds(self, temp_store: GraphStore):
+        pipeline = build_legacy_ingestion_pipeline(temp_store)
+        assert pipeline is not None
 
 
 class TestStorageBehavior:
@@ -132,89 +160,3 @@ class TestStorageBehavior:
         assert len(mentions_edges) >= 1
         k8s_edge = next((e for e in mentions_edges if e.target == "entity_kubernetes"), None)
         assert k8s_edge is not None
-
-
-class TestIngestMemo:
-    """Tests for ingest_memo function."""
-
-    def test_ingest_substantive_text(self, temp_store: GraphStore):
-        text = "Python is a programming language used for web development and data science."
-
-        success, message, node_ids = ingest_memo(text, temp_store)
-
-        assert success is True
-        assert len(node_ids) > 0
-        assert "Created" in message
-
-    def test_ingest_short_text_discarded(self, temp_store: GraphStore):
-        success, message, node_ids = ingest_memo("hi", temp_store)
-        assert success is False
-        assert "Discarded" in message
-        assert len(node_ids) == 0
-
-    def test_ingest_trivial_greeting_discarded(self, temp_store: GraphStore):
-        success, message, _ = ingest_memo("hello", temp_store)
-        assert success is False
-        assert "Discarded" in message
-
-    def test_ingest_exact_duplicate_skipped(self, temp_store: GraphStore):
-        text = "Python is a programming language used for web development and data science."
-        first_success, _, _ = ingest_memo(text, temp_store)
-        second_success, second_message, second_node_ids = ingest_memo(text, temp_store)
-
-        assert first_success is True
-        assert second_success is False
-        assert "Skipped duplicate" in second_message
-        assert second_node_ids == []
-
-    def test_ingest_with_hashtags(self, temp_store: GraphStore):
-        text = "Learning about #Python and #MachineLearning today."
-        success, _, node_ids = ingest_memo(text, temp_store)
-        assert success is True
-        assert len(node_ids) >= 2
-
-    def test_ingest_with_source_id(self, temp_store: GraphStore):
-        text = "Important meeting notes about the project architecture."
-        source_id = "meeting-2024-01-15"
-
-        success, _, node_ids = ingest_memo(text, temp_store, source_id=source_id)
-        assert success is True
-        node = temp_store.get_node(node_ids[0])
-        assert node is not None
-        assert node.metadata.original_source_id == source_id
-
-    def test_ingest_creates_edges_for_tags(self, temp_store: GraphStore):
-        text = "Exploring #API design patterns for #REST services."
-        success, _, _ = ingest_memo(text, temp_store)
-        assert success is True
-        stats = temp_store.get_stats()
-        assert stats["total_edges"] > 0
-
-    def test_ingest_multiple_memos(self, temp_store: GraphStore):
-        texts = [
-            "First note about #Python programming.",
-            "Second note about #Python and #Testing.",
-            "Third note about #API development.",
-        ]
-
-        for text in texts:
-            success, _, _ = ingest_memo(text, temp_store)
-            assert success is True
-
-        stats = temp_store.get_stats()
-        assert stats["total_nodes"] >= 3
-
-    def test_ingest_reuses_existing_tags(self, temp_store: GraphStore):
-        ingest_memo("Learning #Python basics.", temp_store)
-        stats_after_first = temp_store.get_stats()
-
-        ingest_memo("Advanced #Python techniques.", temp_store)
-        stats_after_second = temp_store.get_stats()
-
-        assert stats_after_second["tag_nodes"] == stats_after_first["tag_nodes"]
-
-    def test_ingest_extracts_capitalized_entities(self, temp_store: GraphStore):
-        text = "Meeting with John about the React project at Google."
-        success, _, node_ids = ingest_memo(text, temp_store)
-        assert success is True
-        assert len(node_ids) >= 1

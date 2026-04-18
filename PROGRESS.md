@@ -29,24 +29,31 @@
   - `get_first_hop_neighbors()` for memo retrieval expansion
   - Connection count tracking and updates
   - Importance score calculation
+  - public `delete_edges_for_node()` support for API/MCP cleanup paths
+  - `avg_connections` restored in stats output
 
 #### Intelligence Layer (LangGraph Pipeline)
 - ✅ **Retrieve-first memo pipeline** implemented:
   - `retrieve -> filter -> extract -> store`
 - ✅ **Duplicate short-circuiting** implemented:
   - `duplicate` skips extraction and storage
-- ✅ **FilterAgent** now supports:
-  - `discard`
-  - `duplicate`
-  - `new`
-- ✅ **Filter fallback chain** implemented:
-  - primary: Ollama `phi3.5`
-  - fallback: OpenClaw MiniMax CLI
-  - final fallback: heuristic rules in pipeline
+- ✅ **Memo pipeline split** implemented:
+  - strict memo CLI ingestion path
+  - internal non-CLI/API/MCP ingestion path
+- ✅ **Strict memo CLI flow** implemented:
+  - requires exactly one of `--openclaw` or `--local`
+  - no implicit internal model loading
+  - no fallback between explicit targets
+- ✅ **Legacy internal ingestion flow** retained for non-CLI paths:
+  - `ask()`
+  - API/MCP/internal callers
+- ✅ **FilterAgent** now supports explicit target execution:
+  - trivial discard via heuristic first
+  - explicit target classification for substantive memo CLI flow
+  - no fallback on target failure
 - ✅ **KnowledgeProcessor** updated:
-  - extraction uses new text only
-  - retrieved entity/tag references only
-  - retrieved concept content excluded from extraction input
+  - strict memo CLI extraction uses explicit resolved target only
+  - internal non-CLI ingestion uses heuristic extraction path
 - ✅ **Storage behavior** updated:
   - new concept node only for `new`
   - reuse existing tag/entity nodes
@@ -56,8 +63,8 @@
 - ✅ `init`: Database initialization
 - ✅ `init --with-ollama`: Initialize with Ollama configuration
 - ✅ `ollama-init`: Pull phi3.5 model
-- ✅ `memo "text"`: Ingest notes with filter + extraction pipeline
-- ✅ `memo "text" --no-llm`: Heuristic-only ingestion
+- ✅ `memo "text" --openclaw [agent]`: Ingest notes with required explicit OpenClaw target
+- ✅ `memo "text" --local [model]`: Ingest notes with required explicit local target
 - ✅ `retrieve`: Retrieve relevant context with optional connected context display
 - ✅ `ask "query"`: RAG-enhanced queries
 - ✅ `stats`: Graph statistics display
@@ -71,6 +78,15 @@
 - ✅ `POST /ask`: RAG-enhanced query with automatic Q&A ingestion
 - ✅ `POST /memo`: Memo ingestion endpoint
 - ✅ `GET /stats`: Graph statistics
+
+#### MCP Tools
+- ✅ `mind_map_report`: JSON graph summary and top nodes
+- ✅ `mind_map_prune`: low-importance pruning with structured deletion report
+- ✅ `mind_map_health`: system + integration checks
+- ✅ MCP compatibility restored after memo refactor:
+  - cleanup paths fixed
+  - stats contract fixed
+  - ingest compatibility alias added for older patch/test expectations
 
 ---
 
@@ -97,7 +113,6 @@
 - ✅ `mind-map` backend rebuilt and restarted on `127.0.0.1:8000`
 - ✅ local launcher created at `~/.local/bin/mind-map`
 - ✅ verified installed `mind-map` binary runtime path
-- ✅ verified duplicate filtering in the installed binary after wheel-based reinstall
 
 #### Important Packaging Finding
 - ⚠️ **Direct repo-path `uv tool install` was not reliable on this machine**
@@ -108,10 +123,6 @@
   - `./.venv/bin/python -m build`
   - `uv tool uninstall mind-map`
   - `uv tool install dist/mind_map-0.1.0-py3-none-any.whl`
-- After wheel install, the installed runtime correctly contained:
-  - `get_filter_llm`
-  - `FilterAgentWithFallback`
-  - `_call_minimax_fallback`
 
 #### Pending
 - ⏸️ Single standalone binary packaging
@@ -120,61 +131,53 @@
 
 ---
 
-## 🎯 Recent Updates (2026-04-12)
+## 🎯 Recent Updates (2026-04-18)
 
-### Memo pipeline refactor implemented
+### Explicit memo target flow completed end-to-end
 **Files**:
-- `src/mind_map/app/pipeline.py`
-- `src/mind_map/core/schemas.py`
-- `src/mind_map/processor/knowledge_processor.py`
-- `src/mind_map/rag/graph_store.py`
-- `tests/test_pipeline.py`
-- `tests/test_graph_store.py`
-- `tests/test_api_routes.py`
-
-**What changed**:
-- pipeline reordered to `retrieve -> filter -> extract -> store`
-- retrieval now expands first-hop entity/tag neighbors from retrieved concepts
-- filter now classifies memos as `discard`, `duplicate`, or `new`
-- duplicate memos short-circuit before extraction and storage
-- extraction no longer uses retrieved concept content
-- extraction uses only new text plus optional entity/tag references
-- `existing_links` removed from extraction flow
-- storage now links new concepts to retrieved concepts using deterministic rules
-
-**Result**:
-- duplicate detection moved to the correct stage
-- extraction contamination from retrieved concept text reduced
-- broad test coverage added for retrieval, pipeline, and API-adjacent behavior
-
-### Filter fallback chain implemented
-**Files**:
+- `src/mind_map/processor/cli_executor.py`
 - `src/mind_map/processor/filter_agent.py`
-- `src/mind_map/processor/processing_llm.py`
+- `src/mind_map/processor/knowledge_processor.py`
 - `src/mind_map/app/pipeline.py`
-- `src/mind_map/app/api/routes.py`
 - `src/mind_map/app/cli/main.py`
-- `tests/test_filter_fallback.py`
+- `tests/test_memo_cli_modes.py`
+- `tests/test_pipeline.py`
 
 **What changed**:
-- filter path now uses a dedicated model chain:
-  1. Ollama `phi3.5`
-  2. OpenClaw MiniMax CLI
-  3. heuristic fallback in pipeline
-- cloud-provider routing removed from the **filter path only**
-- separate `filter_llm` introduced for filter stage wiring
-- prompt contract aligned across phi3.5 and MiniMax backends
+- memo flow now requires exactly one explicit target:
+  1. `--openclaw [agent]`
+  2. `--local [model]`
+- missing memo target now fails early for memo CLI flow
+- memo CLI filter/extraction now bypass internal implicit model loading
+- provided memo target is used directly
+- if provided memo target fails, memo is rejected with no fallback
+- local memo mode defaults to `http://127.0.0.1:11435/v1`
+- local memo mode auto-resolves the first model from `/v1/models` when omitted
+- strict memo CLI ingestion and internal non-CLI ingestion are now separate APIs
+- `ask()` and other non-CLI callers now use the internal non-CLI path explicitly
 
-**Runtime validation**:
-- initial duplicate live test failed because installed runtime was stale
-- after wheel-based reinstall, live duplicate memo test correctly returned:
-  - `Skipped duplicate`
+### MCP/report/prune/health regression cleanup completed
+**Files**:
+- `src/mind_map/mcp/server.py`
+- `src/mind_map/rag/graph_store.py`
+- `tests/test_mcp_report.py`
+- `tests/test_mcp_prune.py`
+- `tests/test_mcp_health.py`
 
-### Backend rebuild and restart
 **What changed**:
-- backend rebuilt from repo
-- uvicorn backend restarted on `127.0.0.1:8000`
-- `/stats` health check succeeded after restart
+- restored `avg_connections` in graph stats output
+- restored public `delete_edges_for_node()` API used by cleanup/prune paths
+- fixed MCP health integration cleanup behavior
+- added compatibility alias for MCP health/test patching expectations
+
+**Validation**:
+- focused updated suite passed:
+  - memo CLI modes
+  - pipeline
+  - API routes
+  - filter fallback/legacy behavior tests
+  - MCP report/prune/health
+- combined validated test count during final pass: **129 passing**
 
 ---
 
@@ -212,8 +215,9 @@
    - check installed symbol presence
    - check backend health
 
-3. **Tighten MiniMax filter JSON parsing**
-   - reuse a more tolerant JSON extraction helper pattern for consistency
+3. **Consider trimming stale planning docs**
+   - historical planning notes still mention removed intermediate designs
+   - active README/PROGRESS now reflect current behavior
 
 ### Medium-Term Goals
 4. **Frontend Development**
@@ -222,7 +226,7 @@
    - create interactive node inspector
 
 5. **Enhanced Features**
-   - graph pruning
+   - graph pruning improvements
    - export/import functionality
    - structured retrieve output mode
 
@@ -236,14 +240,17 @@
 
 ## 📈 Metrics
 
-**As of 2026-04-12:**
-- memo pipeline tests: passing
-- graph store tests: passing
+**As of 2026-04-18:**
+- memo CLI modes: passing
+- pipeline tests: passing
 - API route tests: passing
-- filter fallback tests: passing
-- combined validated test count during refactor: 74 passing
+- filter/legacy ingestion tests: passing
+- MCP report tests: passing
+- MCP prune tests: passing
+- MCP health tests: passing
+- combined validated test count during final review: **129 passing**
 
 **Operational validation:**
-- backend restarted successfully
-- installed binary path verified
-- duplicate live memo test now correctly skipped after wheel-based reinstall
+- strict explicit-target memo flow verified
+- internal non-CLI ingestion path verified
+- MCP cleanup/report/prune/health regressions fixed and verified

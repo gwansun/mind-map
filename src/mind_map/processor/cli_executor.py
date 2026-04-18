@@ -10,6 +10,7 @@ import re
 import shlex
 import shutil
 import subprocess
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -20,49 +21,114 @@ class CLIExecutionError(RuntimeError):
 
 _DEFAULT_EXTRACTION_TIMEOUT = 60.0
 _FILTER_EXTRACTION_TIMEOUT = 60.0
+_DEFAULT_OPENCLAW_MESSAGE = "info"
+_DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11435/v1"
+
+
+@dataclass(frozen=True)
+class OpenClawTarget:
+    """Explicit OpenClaw memo target resolved by the CLI."""
+
+    message: str = _DEFAULT_OPENCLAW_MESSAGE
+    agent: str | None = None
+
+
+@dataclass(frozen=True)
+class LocalTarget:
+    """Explicit local OpenAI-compatible memo target resolved by the CLI."""
+
+    model: str
+    base_url: str = _DEFAULT_LOCAL_BASE_URL
+
+
+MemoTarget = OpenClawTarget | LocalTarget
 
 
 # ---- Provider command templates ----
 
-_OPENCLAW_TEMPLATE = "openclaw agent --agent {agent} --message"
-_OLLAMA_TEMPLATE = "ollama run {model}"
+_OPENCLAW_TEMPLATE = "openclaw agent --message"
+_OPENCLAW_AGENT_TEMPLATE = "openclaw agent --agent {agent} --message"
 
 
-def resolve_cli_template(
-    *,
-    openclaw: str | None = None,
-    ollama: str | None = None,
-    llm_cmd: str | None = None,
-) -> str | None:
-    """Resolve provider-specific convenience flags to a command template string.
+def build_openclaw_command(target: OpenClawTarget) -> str:
+    """Build the exact OpenClaw CLI command template for a resolved target."""
+    if target.agent:
+        return _OPENCLAW_AGENT_TEMPLATE.format(agent=target.agent)
+    return _OPENCLAW_TEMPLATE
 
-    At most one of openclaw / ollama / llm_cmd may be set.
-    Returns the resolved template string, or None to use the built-in defaults path.
 
-    Resolution map:
-        --openclaw AGENT  -> "openclaw agent --agent AGENT --message"
-        --ollama MODEL   -> "ollama run MODEL"
-        --llm-cmd "raw"  -> passed through as-is
-        (all None)       -> None (use built-in MiniMax with fallback chain)
+def resolve_local_model(*, model: str | None = None, base_url: str = _DEFAULT_LOCAL_BASE_URL) -> str:
+    """Resolve a local OpenAI-compatible model.
 
-    Raises ValueError if more than one is set.
+    If model is provided, use it directly. Otherwise query /models and choose the
+    first returned model id.
     """
-    provided = [k for k, v in {"openclaw": openclaw, "ollama": ollama, "llm_cmd": llm_cmd}.items() if v is not None]
+    if model:
+        return model
 
-    if len(provided) > 1:
-        raise ValueError(
-            f"Options --openclaw, --ollama, and --llm-cmd are mutually exclusive. "
-            f"Got: {', '.join('--' + p for p in provided)}"
+    models_url = f"{base_url.rstrip('/')}/models"
+
+    try:
+        import requests
+    except ImportError as e:
+        raise CLIExecutionError(f"requests is required for --local support: {e}") from e
+
+    try:
+        response = requests.get(models_url, timeout=_DEFAULT_EXTRACTION_TIMEOUT)
+        response.raise_for_status()
+    except Exception as e:
+        raise CLIExecutionError(f"Failed to query local models at {models_url}: {e}") from e
+
+    try:
+        payload = response.json()
+    except ValueError as e:
+        raise CLIExecutionError(f"Local models endpoint did not return JSON: {models_url}") from e
+
+    data = payload.get("data")
+    if not isinstance(data, list) or not data:
+        raise CLIExecutionError(f"No local models available at {models_url}")
+
+    first = data[0]
+    if not isinstance(first, dict) or not isinstance(first.get("id"), str) or not first["id"].strip():
+        raise CLIExecutionError(f"Invalid local model entry returned by {models_url}")
+
+    return first["id"].strip()
+
+
+def build_local_command(target: LocalTarget) -> str:
+    """Build a local OpenAI-compatible CLI command template using curl.
+
+    The prompt will be appended as the last argument and injected into the JSON
+    payload under messages[0].content.
+    """
+    escaped_base = shlex.quote(target.base_url.rstrip("/"))
+    escaped_model = json.dumps(target.model)
+    payload_prefix = (
+        "{"
+        f'\"model\":{escaped_model},'
+        '\"messages\":[{\"role\":\"user\",\"content\":'
+    )
+    payload_suffix = "}]}"
+    return (
+        "python3 -c "
+        + shlex.quote(
+            "import json, sys, urllib.request; "
+            f"base={target.base_url.rstrip('/')!r}; "
+            f"model={target.model!r}; "
+            "prompt=sys.argv[1]; "
+            "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}] }).encode(); "
+            "req=urllib.request.Request(base + '/chat/completions', data=body, headers={'Content-Type': 'application/json'}); "
+            "resp=urllib.request.urlopen(req, timeout=60); "
+            "sys.stdout.write(resp.read().decode())"
         )
+    )
 
-    if openclaw is not None:
-        return _OPENCLAW_TEMPLATE.format(agent=openclaw)
-    if ollama is not None:
-        return _OLLAMA_TEMPLATE.format(model=ollama)
-    if llm_cmd is not None:
-        return llm_cmd
 
-    return None  # built-in MiniMax with fallback chain
+def build_cli_template(target: MemoTarget) -> str:
+    """Build the exact CLI template for a resolved memo target."""
+    if isinstance(target, OpenClawTarget):
+        return build_openclaw_command(target)
+    return build_local_command(target)
 
 
 def run_cli_json(
@@ -73,8 +139,6 @@ def run_cli_json(
     """Run a CLI command with a prompt appended, return parsed JSON from stdout.
 
     The prompt is appended as a single argument to the command template.
-    E.g. template="openclaw agent --agent minimax --message" + prompt="hello"
-         → ["openclaw", "agent", "--agent", "minimax", "--message", "hello"]
 
     Raises CLIExecutionError on:
         - Command not found (non-zero return)
@@ -114,8 +178,6 @@ def run_cli_json(
 
     content = (result.stdout or "").strip()
 
-    # Strip Ollama "Thinking..." auxiliary output that precedes JSON.
-    # Find the first line that looks like the start of a JSON object or array.
     lines = content.splitlines()
     json_line_idx = -1
     for i, line in enumerate(lines):
@@ -133,10 +195,6 @@ def run_cli_json(
         )
 
     def _find_json_bounds(text: str) -> tuple[int, int] | None:
-        """Find start/end offsets of the first balanced JSON object or array in text.
-
-        Returns (start, end+1) offsets, or None if no balanced JSON found.
-        """
         if not text:
             return None
         start_char = text[0]
@@ -167,13 +225,11 @@ def run_cli_json(
                     return (0, i + 1)
         return None
 
-    # Try direct JSON parse first
     try:
         return json.loads(content, strict=False)
     except json.JSONDecodeError:
         pass
 
-    # Try stripping common markdown fences
     for fence in ("```json\n", "```json", "```\n", "```"):
         if content.startswith(fence):
             trimmed = content[len(fence):].strip()
@@ -182,14 +238,12 @@ def run_cli_json(
             except json.JSONDecodeError:
                 pass
 
-    # Strip residual ANSI escape sequences and try again
     content_clean = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", content)
     try:
         return json.loads(content_clean, strict=False)
     except json.JSONDecodeError:
         pass
 
-    # Find balanced JSON using brace matching
     bounds = _find_json_bounds(content)
     if bounds is not None:
         try:

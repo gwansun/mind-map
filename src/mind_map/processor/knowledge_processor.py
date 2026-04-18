@@ -1,29 +1,21 @@
 """Knowledge Processor - LLM(B) for entity extraction and summarization.
 
-Supports a primary/fallback extraction chain:
-1. Primary: OpenClaw MiniMax agent subprocess for structured extraction
-2. Fallback: Ollama phi3.5 via LangChain
-3. Final fallback: heuristic extraction
-
-Supports custom CLI template via constructor (used by --model option in CLI).
-When cli_template is set, that exact command is used as primary and no fallback occurs.
+Supports explicit memo target execution for structured extraction.
+The CLI must resolve the model path earlier and pass it in.
+If the given target fails, extraction throws and the memo is rejected.
 """
 from __future__ import annotations
 
-import json
 import re
-import shutil
-import subprocess
 from typing import Any
 
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from mind_map.core.schemas import ExtractionResult, GraphNode
+from mind_map.processor.cli_executor import MemoTarget, build_cli_template
 
 logger = __import__("logging").getLogger(__name__)
-
-_OPENCLAW_TIMEOUT_SECONDS = 60.0
 
 EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """JSON-ONLY MODE: Respond with ONLY a raw JSON object. No prose. No markdown. No explanation.
@@ -68,66 +60,6 @@ def _build_reference_context(reference_nodes: list[GraphNode]) -> str:
     return "\n".join(lines)
 
 
-def _extract_json_from_text(content: str) -> dict[str, Any] | None:
-    """Extract a JSON object from text, tolerating wrapper prose."""
-    content = content.strip()
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        pass
-    json_match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", content, re.DOTALL)
-    if json_match:
-        try:
-            return json.loads(json_match.group())
-        except json.JSONDecodeError:
-            pass
-    return None
-
-
-def _call_openclaw_minimax_extraction(
-    prompt: str,
-    timeout: float = _OPENCLAW_TIMEOUT_SECONDS,
-) -> dict[str, Any] | None:
-    """Call OpenClaw MiniMax agent for structured extraction."""
-    if shutil.which("openclaw") is None:
-        logger.debug("openclaw CLI not found, skipping MiniMax extraction")
-        return None
-
-    command = [
-        "openclaw",
-        "agent",
-        "--agent",
-        "minimax",
-        "--message",
-        prompt,
-    ]
-
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        if result.returncode != 0:
-            logger.warning("OpenClaw MiniMax extraction failed (rc=%s): %s", result.returncode, result.stderr[:200])
-            return None
-
-        content = (result.stdout or "").strip()
-        if not content:
-            logger.warning("OpenClaw MiniMax returned empty content")
-            return None
-
-        return _extract_json_from_text(content)
-    except subprocess.TimeoutExpired:
-        logger.warning("OpenClaw MiniMax extraction timed out after %ds", timeout)
-        return None
-    except Exception as e:
-        logger.warning("OpenClaw MiniMax extraction failed: %s", e)
-        return None
-
-
 def _call_custom_extraction(
     cli_template: str,
     prompt: str,
@@ -140,17 +72,6 @@ def _call_custom_extraction(
     return run_extraction_cli(cli_template, prompt)
 
 
-def _call_ollama_extraction(
-    text: str,
-    references: str,
-    parser: JsonOutputParser,
-    chain: Any,
-) -> ExtractionResult:
-    """Call Ollama LLM for extraction (fallback path)."""
-    result = chain.invoke({"text": text, "references": references})
-    return ExtractionResult(**result)
-
-
 class KnowledgeProcessor:
     """Agent that extracts structured knowledge from text."""
 
@@ -158,16 +79,12 @@ class KnowledgeProcessor:
         self,
         llm: Any | None = None,
         *,
-        cli_template: str | None = None,
+        target: MemoTarget | None = None,
     ) -> None:
         self._llm = llm
-        self._cli_template = cli_template
+        self._target = target
         self._parser = JsonOutputParser(pydantic_object=ExtractionResult)
         self._chain = EXTRACTION_PROMPT | llm | self._parser if llm else None
-
-    @property
-    def _has_ollama(self) -> bool:
-        return self._llm is not None and self._chain is not None
 
     def _parse_extraction_result(self, raw: dict[str, Any]) -> ExtractionResult:
         summary = raw.get("summary", "")
@@ -189,57 +106,18 @@ class KnowledgeProcessor:
     ) -> ExtractionResult:
         """Extract structured knowledge from new text with optional entity/tag references.
 
-        When cli_template is set: uses that command only; raises on failure.
-        Otherwise: MiniMax → Ollama LangChain → heuristic.
+        Uses the explicit target only; raises on failure.
+        No internal provider loading or fallback is allowed on the memo CLI path.
         """
         references = _build_reference_context(reference_nodes)
 
-        # Custom CLI path (no fallback)
-        if self._cli_template is not None:
-            prompt = _REFERENCE_CONTEXT_TEMPLATE.format(
-                text=text,
-                references=references,
-            )
-            raw = _call_custom_extraction(self._cli_template, prompt)
-            return self._parse_extraction_result(raw)
+        if self._target is None:
+            raise ValueError("Memo target is required for extraction")
 
-        # Built-in MiniMax primary
-        raw = _call_openclaw_minimax_extraction(
-            _REFERENCE_CONTEXT_TEMPLATE.format(text=text, references=references),
-            timeout=_OPENCLAW_TIMEOUT_SECONDS,
-        )
-        if raw is not None:
-            return self._parse_extraction_result(raw)
-
-        # Ollama LangChain fallback
-        if self._has_ollama:
-            return self._extract_fallback_with_references(text, references)
-
-        return self._heuristic_extraction(text)
-
-    def _extract_fallback_with_references(
-        self,
-        text: str,
-        references: str,
-    ) -> ExtractionResult:
-        return _call_ollama_extraction(
+        prompt = _REFERENCE_CONTEXT_TEMPLATE.format(
             text=text,
             references=references,
-            parser=self._parser,
-            chain=self._chain,
         )
+        raw = _call_custom_extraction(build_cli_template(self._target), prompt)
+        return self._parse_extraction_result(raw)
 
-    def _heuristic_extraction(self, text: str) -> ExtractionResult:
-        tag_pattern = re.compile(r"#(\w+)")
-        tags = [f"#{m.group(1).lower()}" for m in tag_pattern.finditer(text)]
-        tags = list(dict.fromkeys(tags))
-
-        entity_pattern = re.compile(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b")
-        entities = list(dict.fromkeys(m.group(0) for m in entity_pattern.finditer(text)))
-
-        return ExtractionResult(
-            summary=text[:300] if len(text) > 300 else text,
-            tags=tags,
-            entities=entities,
-            relationships=[],
-        )

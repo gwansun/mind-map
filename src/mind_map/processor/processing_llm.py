@@ -792,13 +792,10 @@ def get_filter_llm(
     model_name: str | None = None,
     auto_pull: bool | None = None,
 ) -> Any:
-    """Get LLM specifically for the filter path (phi3.5-only, no cloud-auto).
+    """Get an Ollama-backed filter LLM helper for internal non-CLI flows.
 
     This function bypasses cloud-auto routing and only uses Ollama phi3.5.
-    It is used by the filter step in the ingestion pipeline.
-
-    The fallback chain for filter is handled by FilterAgentWithFallback:
-        phi3.5 via LangChain -> OpenClaw MiniMax CLI -> heuristic
+    It is not used by the strict explicit-target memo CLI path.
 
     Args:
         model_name: Ollama model to use (defaults to phi3.5 from config)

@@ -722,15 +722,15 @@ class TestEnrichmentEndToEnd:
 
     def test_ingest_and_enrich_flow(self, temp_store: GraphStore):
         """Ingest related memos, query, enrich, verify relation factors."""
-        from mind_map.app.pipeline import ingest_memo
+        from mind_map.app.pipeline import ingest_memo_internal
 
         # Ingest related content
-        success1, _, ids1 = ingest_memo(
+        success1, _, ids1 = ingest_memo_internal(
             "Python is great for #DataScience and #MachineLearning",
             temp_store,
         )
         assert success1
-        success2, _, ids2 = ingest_memo(
+        success2, _, ids2 = ingest_memo_internal(
             "Using #DataScience techniques with #Python for analysis",
             temp_store,
         )
@@ -748,11 +748,11 @@ class TestEnrichmentEndToEnd:
 
     def test_enrich_preserves_all_nodes(self, temp_store: GraphStore):
         """Enrichment should not drop any nodes."""
-        from mind_map.app.pipeline import ingest_memo
+        from mind_map.app.pipeline import ingest_memo_internal
 
-        ingest_memo("Machine learning is a field of AI", temp_store)
-        ingest_memo("Deep learning uses neural networks", temp_store)
-        ingest_memo("Natural language processing with transformers", temp_store)
+        ingest_memo_internal("Machine learning is a field of AI", temp_store)
+        ingest_memo_internal("Deep learning uses neural networks", temp_store)
+        ingest_memo_internal("Natural language processing with transformers", temp_store)
 
         nodes = temp_store.query_similar("AI and machine learning", n_results=5)
         original_count = len(nodes)

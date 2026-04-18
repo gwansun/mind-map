@@ -79,8 +79,8 @@ def show_help() -> None:
     memo_table.add_row("TEXT", "", "Text to ingest (required argument)")
     memo_table.add_row("--source TEXT", "-s", "Source identifier for the note")
     memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: ~/.openclaw/...]")
-    memo_table.add_row("--openclaw AGENT", "", 'Use OpenClaw agent for both filter+extraction, e.g. "minimax"')
-    memo_table.add_row("--ollama MODEL", "", 'Use Ollama model for both filter+extraction, e.g. "gemma4" (best-effort JSON parsing)')
+    memo_table.add_row("--openclaw [AGENT]", "", 'Required memo mode. Uses explicit OpenClaw path, default message "info"; optional agent like "minimax"')
+    memo_table.add_row("--local [MODEL]", "", 'Required memo mode. Uses explicit local OpenAI-compatible path at http://127.0.0.1:11435/v1')
     console.print(memo_table)
 
     # Ask Command Options
@@ -168,9 +168,10 @@ mind-map model list                     # List available models
 mind-map model set phi3.5 --persist     # Set and save model choice
 
 [dim]# Ingesting notes[/dim]
-mind-map memo "Python is great"                              # Built-in MiniMax with fallback chain
-mind-map memo "Note" --openclaw minimax                      # openclaw agent --agent minimax --message
-mind-map memo "Note" --ollama gemma4                         # ollama run gemma4 (best-effort JSON parsing)
+mind-map memo "Note" --openclaw                              # openclaw agent --message "info"
+mind-map memo "Note" --openclaw minimax                      # openclaw agent --agent minimax --message "info"
+mind-map memo "Note" --local                                 # local endpoint http://127.0.0.1:11435/v1 using first /models entry
+mind-map memo "Note" --local mlx-community/gemma-4-e4b-it-4bit   # local endpoint with explicit model id
 
 [dim]# Querying[/dim]
 mind-map ask "What is Python?"          # Query knowledge graph
@@ -188,7 +189,8 @@ mind-map serve --port 3000              # Start on custom port"""
 [dim]Environment:[/dim] .env (API keys: GOOGLE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY)
 [dim]Data storage:[/dim] ./data/ (ChromaDB + SQLite)
 
-[bold]Processing LLM (B):[/bold] Cloud APIs (Gemini/Anthropic/OpenAI) with Ollama fallback
+[bold]Processing LLM (B):[/bold] General processing path for non-memo flows
+[bold]Memo ingestion:[/bold] Requires explicit `--openclaw` or `--local` target, no implicit fallback
 [bold]Reasoning LLM (A):[/bold] Claude CLI / Cloud APIs - for response generation"""
 
     console.print(config_info)
@@ -414,61 +416,61 @@ def memo(
         str | None,
         typer.Option(
             "--openclaw",
-            help='OpenClaw agent to use for both filter and extraction, e.g. "minimax" '
-                 "expands to: openclaw agent --agent minimax --message"
+            help='Use explicit OpenClaw path. Omit value for default agent, or pass an agent like "minimax"'
         ),
     ] = None,
-    ollama: Annotated[
+    local: Annotated[
         str | None,
         typer.Option(
-            "--ollama",
-            help='Ollama model to use for both filter and extraction, e.g. "gemma4" '
-                 "expands to: ollama run gemma4"
-        ),
-    ] = None,
-    llm_cmd: Annotated[
-        str | None,
-        typer.Option(
-            "--llm-cmd",
-            help="Raw CLI command template escape hatch (mutually exclusive with --openclaw/--ollama). "
-                 "Prompt is appended as the last argument. "
-                 'Example: "openclaw agent --agent ollama --message"'
+            "--local",
+            help='Use explicit local OpenAI-compatible path. Omit value to auto-resolve first /models entry, or pass a model id'
         ),
     ] = None,
 ) -> None:
     """Ingest a note or thought into the knowledge graph."""
-    from mind_map.app.pipeline import ingest_memo
-    from mind_map.processor.cli_executor import CLIExecutionError, resolve_cli_template
+    from mind_map.app.pipeline import ingest_memo_cli
+    from mind_map.processor.cli_executor import (
+        CLIExecutionError,
+        LocalTarget,
+        OpenClawTarget,
+        build_cli_template,
+        resolve_local_model,
+    )
     from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
         raise typer.Exit(1)
 
+    if (openclaw is None and local is None) or (openclaw is not None and local is not None):
+        console.print("[red]Exactly one of --openclaw or --local is required.[/red]")
+        raise typer.Exit(1)
+
     try:
-        shared_cli = resolve_cli_template(openclaw=openclaw, ollama=ollama, llm_cmd=llm_cmd)
-    except ValueError as e:
+        if openclaw is not None:
+            target = OpenClawTarget(agent=openclaw or None)
+        else:
+            model_name = resolve_local_model(model=local or None)
+            target = LocalTarget(model=model_name)
+        shared_cli = build_cli_template(target)
+    except CLIExecutionError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
     store = GraphStore(data_dir)
     store.initialize()
 
-    if shared_cli:
-        console.print(f"[dim]CLI: {shared_cli}[/dim]")
-    else:
-        console.print("[dim]Using built-in OpenClaw MiniMax (with fallback chain)[/dim]")
-
+    console.print(f"[dim]CLI: {shared_cli}[/dim]")
     console.print("[yellow]Processing memo...[/yellow]")
 
-    success, message, node_ids = ingest_memo(
+    success, message, node_ids = ingest_memo_cli(
         text,
         store,
-        cli_template=shared_cli,
+        target=target,
         source_id=source,
     )
 
-    if shared_cli and message.startswith("Memo rejected:"):
+    if message.startswith("Memo rejected:"):
         console.print(f"[red]{message}[/red]")
         raise typer.Exit(1)
 
@@ -596,8 +598,8 @@ def ask(
     for node in nodes:
         store.update_interaction(node.id)
 
-    # Step 5: Process Q&A pair through LLM(B) pipeline to extract and store knowledge
-    from mind_map.app.pipeline import ingest_memo
+    # Step 5: Process Q&A pair through the internal non-CLI ingestion path and add to the knowledge graph
+    from mind_map.app.pipeline import ingest_memo_internal
     from mind_map.core.schemas import Edge
     from mind_map.processor.processing_llm import get_processing_llm
 
@@ -609,7 +611,7 @@ def ask(
         console.print("[dim]Processing LLM not available, using heuristic extraction...[/dim]")
 
     qa_text = f"Q: {query}\nA: {response}"
-    success, message, qa_node_ids = ingest_memo(
+    success, message, qa_node_ids = ingest_memo_internal(
         text=qa_text,
         store=store,
         llm=processing_llm,

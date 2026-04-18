@@ -1,4 +1,4 @@
-"""LangGraph pipeline for memo ingestion with retrieval-first duplicate detection."""
+"""LangGraph pipelines for strict memo CLI ingestion and internal non-CLI ingestion."""
 from __future__ import annotations
 
 import uuid
@@ -15,7 +15,7 @@ from mind_map.core.schemas import (
     NodeType,
     RetrievalContext,
 )
-from mind_map.processor.cli_executor import CLIExecutionError
+from mind_map.processor.cli_executor import CLIExecutionError, MemoTarget
 from mind_map.processor.filter_agent import FilterAgent
 from mind_map.rag.graph_store import GraphStore
 
@@ -26,6 +26,7 @@ class PipelineState:
 
     raw_text: str
     source_id: str | None = None
+    target: MemoTarget | None = None
     retrieval: RetrievalContext | None = None
     filter_decision: FilterDecision | None = None
     extraction: ExtractionResult | None = None
@@ -79,20 +80,14 @@ def create_retrieval_node(store: GraphStore):
     return retrieval_node
 
 
-def create_filter_node(*, cli_template: str | None = None):
-    """Create a filter node that decides discard/duplicate/new.
-
-    When cli_template is set, that exact command is used as primary.
-    On CLI failure, the memo is rejected (no fallback).
-    When cli_template is None, uses built-in MiniMax CLI → heuristic.
-    """
-    agent = FilterAgent(cli_template=cli_template)
+def create_filter_node(*, target: MemoTarget):
+    """Create a filter node that decides discard/duplicate/new for strict memo CLI flow."""
+    agent = FilterAgent(target=target)
 
     def filter_node(state: PipelineState) -> dict[str, Any]:
         text = state.raw_text.strip()
         retrieved_concepts = state.retrieval.concepts if state.retrieval else []
 
-        # Always check heuristic first — discard/trivial always returns discard
         heuristic_decision = _heuristic_filter(text, retrieved_concepts)
         if heuristic_decision.action == "discard":
             return {"filter_decision": heuristic_decision}
@@ -101,12 +96,11 @@ def create_filter_node(*, cli_template: str | None = None):
             decision = agent.evaluate_sync(text, retrieved_concepts)
             return {"filter_decision": decision}
         except CLIExecutionError as e:
-            # Custom CLI failed — reject the memo
             return {
                 "error": str(e),
                 "filter_decision": FilterDecision(
                     action="discard",
-                    reason=f"CLI command failed: {cli_template}",
+                    reason="Memo target execution failed",
                     summary=None,
                 )
             }
@@ -114,13 +108,8 @@ def create_filter_node(*, cli_template: str | None = None):
     return filter_node
 
 
-def create_extraction_node(llm: Any | None = None, *, cli_template: str | None = None):
-    """Create an extraction node that extracts only for new memos.
-
-    When cli_template is set, that exact command is used as primary.
-    On CLI failure, the memo is rejected (no fallback).
-    When cli_template is None, uses built-in MiniMax → Ollama LangChain → heuristic.
-    """
+def create_extraction_node(*, target: MemoTarget):
+    """Create an extraction node for strict memo CLI flow."""
 
     def extraction_node(state: PipelineState) -> dict[str, Any]:
         if state.filter_decision is None or state.filter_decision.action != "new":
@@ -132,13 +121,12 @@ def create_extraction_node(llm: Any | None = None, *, cli_template: str | None =
             references = [*state.retrieval.entities, *state.retrieval.tags]
 
         from mind_map.processor.knowledge_processor import KnowledgeProcessor
-        processor = KnowledgeProcessor(llm, cli_template=cli_template)
+        processor = KnowledgeProcessor(target=target)
 
         try:
             result = processor.extract_with_references(text, references)
             return {"extraction": result}
         except CLIExecutionError as e:
-            # Custom CLI failed — reject the memo
             return {
                 "error": str(e),
                 "extraction": ExtractionResult(
@@ -148,9 +136,31 @@ def create_extraction_node(llm: Any | None = None, *, cli_template: str | None =
                     relationships=[],
                 ),
             }
-        except Exception:
-            pass
+        except Exception as e:
+            return {"error": str(e)}
 
+    return extraction_node
+
+
+def create_filter_node_legacy():
+    """Filter node for internal non-CLI ingestion paths."""
+
+    def filter_node(state: PipelineState) -> dict[str, Any]:
+        text = state.raw_text.strip()
+        retrieved_concepts = state.retrieval.concepts if state.retrieval else []
+        heuristic_decision = _heuristic_filter(text, retrieved_concepts)
+        return {"filter_decision": heuristic_decision}
+
+    return filter_node
+
+
+def create_extraction_node_legacy(llm: Any | None = None):
+    """Extraction node for internal non-CLI ingestion paths."""
+
+    def extraction_node(state: PipelineState) -> dict[str, Any]:
+        if state.filter_decision is None or state.filter_decision.action != "new":
+            return {}
+        text = state.filter_decision.summary or state.raw_text
         return _heuristic_extraction(text)
 
     return extraction_node
@@ -267,37 +277,17 @@ def should_continue_after_filter(state: PipelineState) -> str:
     return "end"
 
 
-def build_ingestion_pipeline(
+def build_memo_cli_ingestion_pipeline(
     store: GraphStore,
     *,
-    cli_template: str | None = None,
-    filter_cli_template: str | None = None,
-    extraction_cli_template: str | None = None,
-    llm: Any | None = None,
+    target: MemoTarget,
 ) -> StateGraph:
-    """Build the LangGraph pipeline for memo ingestion.
-
-    Pipeline flow:
-        retrieve -> filter -> extract -> store -> end
-
-    Args:
-        store: GraphStore instance for retrieval and storage
-        cli_template: Single CLI command used for both filter and extraction.
-                     If set, the same command is used for both steps.
-                     On failure the memo is rejected (no fallback).
-                     e.g. "openclaw agent --agent minimax --message" or "ollama run gemma4"
-        filter_cli_template: [DEPRECATED] Use cli_template instead.
-        extraction_cli_template: [DEPRECATED] Use cli_template instead.
-        llm: Ollama LLM for extraction LangChain fallback (only used when cli_template is None).
-    """
-    # Support deprecated separate templates for backward compat
-    shared_template = cli_template or filter_cli_template or extraction_cli_template
-
+    """Build the strict memo CLI ingestion pipeline."""
     workflow = StateGraph(PipelineState)
 
     workflow.add_node("retrieve", create_retrieval_node(store))
-    workflow.add_node("filter", create_filter_node(cli_template=shared_template))
-    workflow.add_node("extract", create_extraction_node(llm, cli_template=shared_template))
+    workflow.add_node("filter", create_filter_node(target=target))
+    workflow.add_node("extract", create_extraction_node(target=target))
     workflow.add_node("store", create_storage_node(store))
 
     workflow.set_entry_point("retrieve")
@@ -316,40 +306,79 @@ def build_ingestion_pipeline(
     return workflow.compile()
 
 
-def ingest_memo(
+def build_legacy_ingestion_pipeline(
+    store: GraphStore,
+    *,
+    llm: Any | None = None,
+) -> StateGraph:
+    """Build the internal non-CLI ingestion pipeline."""
+    workflow = StateGraph(PipelineState)
+
+    workflow.add_node("retrieve", create_retrieval_node(store))
+    workflow.add_node("filter", create_filter_node_legacy())
+    workflow.add_node("extract", create_extraction_node_legacy(llm))
+    workflow.add_node("store", create_storage_node(store))
+
+    workflow.set_entry_point("retrieve")
+    workflow.add_edge("retrieve", "filter")
+    workflow.add_conditional_edges(
+        "filter",
+        should_continue_after_filter,
+        {
+            "extract": "extract",
+            "end": END,
+        },
+    )
+    workflow.add_edge("extract", "store")
+    workflow.add_edge("store", END)
+
+    return workflow.compile()
+
+
+def ingest_memo_cli(
     text: str,
     store: GraphStore,
     *,
-    cli_template: str | None = None,
-    filter_cli_template: str | None = None,
-    extraction_cli_template: str | None = None,
+    target: MemoTarget,
+    source_id: str | None = None,
+) -> tuple[bool, str, list[str]]:
+    """Ingest a memo through the strict memo CLI pipeline."""
+    pipeline = build_memo_cli_ingestion_pipeline(
+        store,
+        target=target,
+    )
+
+    initial_state = PipelineState(raw_text=text, source_id=source_id, target=target)
+    final_state = pipeline.invoke(initial_state)
+
+    if final_state.get("error"):
+        return False, f"Memo rejected: {final_state['error']}", []
+
+    filter_decision = final_state.get("filter_decision")
+    if filter_decision:
+        if filter_decision.action == "discard":
+            return False, f"Discarded: {filter_decision.reason}", []
+        if filter_decision.action == "duplicate":
+            return False, f"Skipped duplicate: {filter_decision.reason}", []
+
+    node_ids = final_state.get("node_ids", [])
+    return True, f"Created {len(node_ids)} nodes", node_ids
+
+
+def ingest_memo_internal(
+    text: str,
+    store: GraphStore,
+    *,
     llm: Any | None = None,
     source_id: str | None = None,
 ) -> tuple[bool, str, list[str]]:
-    """Ingest a memo through the pipeline.
-
-    Args:
-        text: Raw memo text to process
-        store: GraphStore instance
-        cli_template: Single CLI command for both filter and extraction.
-                      On failure the memo is rejected (discarded).
-                      If None, uses built-in MiniMax → Ollama LangChain → heuristic.
-        filter_cli_template: [DEPRECATED] Use cli_template instead.
-        extraction_cli_template: [DEPRECATED] Use cli_template instead.
-        llm: Ollama LLM for extraction LangChain fallback.
-             Only used when cli_template is None.
-        source_id: Optional source identifier for the memo
-    """
-    # Support deprecated separate templates for backward compat
-    shared_template = cli_template or filter_cli_template or extraction_cli_template
-
-    pipeline = build_ingestion_pipeline(
+    """Ingest text through the internal non-CLI ingestion pipeline."""
+    pipeline = build_legacy_ingestion_pipeline(
         store,
-        cli_template=shared_template,
         llm=llm,
     )
 
-    initial_state = PipelineState(raw_text=text, source_id=source_id)
+    initial_state = PipelineState(raw_text=text, source_id=source_id, target=None)
     final_state = pipeline.invoke(initial_state)
 
     if final_state.get("error"):

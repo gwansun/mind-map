@@ -191,7 +191,7 @@ async def ask(request: AskRequest) -> AskResponse:
     3. Process Q&A pair through LLM-B pipeline to extract and store knowledge
     4. Link new nodes to context nodes if any existed
     """
-    from mind_map.app.pipeline import ingest_memo
+    from mind_map.app.pipeline import ingest_memo_internal
     from mind_map.core.schemas import Edge
     from mind_map.processor.processing_llm import get_processing_llm
     from mind_map.rag.reasoning_llm import get_reasoning_llm
@@ -238,7 +238,7 @@ async def ask(request: AskRequest) -> AskResponse:
     qa_text = f"Q: {request.query}\nA: {response}"
 
     processing_llm = get_processing_llm()
-    success, message, qa_node_ids = ingest_memo(
+    success, message, qa_node_ids = ingest_memo_internal(
         text=qa_text,
         store=store,
         llm=processing_llm,
@@ -266,24 +266,20 @@ async def ask(request: AskRequest) -> AskResponse:
 
 @app.post("/memo")
 async def add_memo(request: MemoRequest) -> dict[str, Any]:
-    """Ingest a memo into the knowledge graph via the LangGraph pipeline."""
-    from mind_map.app.pipeline import ingest_memo
-    from mind_map.processor.processing_llm import get_filter_llm, get_processing_llm
+    """Ingest a memo into the knowledge graph via the internal non-CLI pipeline."""
+    from mind_map.app.pipeline import ingest_memo_internal
+    from mind_map.processor.processing_llm import get_processing_llm
 
     store = get_store()
     store.initialize()
 
-    # filter_llm: phi3.5 only (no cloud-auto) for the filter path
-    # extraction uses the general processing_llm (cloud-auto with Ollama fallback)
-    filter_llm = get_filter_llm()
     processing_llm = get_processing_llm()
 
-    success, message, node_ids = ingest_memo(
+    success, message, node_ids = ingest_memo_internal(
         text=request.text,
         store=store,
         llm=processing_llm,
         source_id=request.source,
-        filter_llm=filter_llm,
     )
 
     return {

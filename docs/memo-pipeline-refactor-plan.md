@@ -1,217 +1,49 @@
-# Memo Pipeline Refactor Plan
-
-## Goal
-
-Refactor the memo ingestion flow to prevent duplicate concepts by moving duplicate detection ahead of extraction, keeping extraction focused on new text, and using retrieved first-hop entity/tag context only as lightweight reference material.
+# Historical Plan: Memo Pipeline Refactor
 
 ## Status
 
-**Implemented** on 2026-04-12.
+**Archived design record**
 
-This document remains useful as the design record, but the core plan below has already been executed in the codebase.
+This file captures the refactor plan that led to the current retrieve-first memo pipeline. It is retained for history, but it is **not** the primary source of truth.
 
-Implemented outcomes:
-- pipeline reordered to `retrieve -> filter -> extract -> store`
-- duplicate memos now skip extraction and storage
-- retrieval expands first-hop `entity`/`tag` neighbors from retrieved concepts
-- extraction no longer uses retrieved concept content
-- extraction uses only new text plus optional entity/tag references
-- `existing_links` removed from extraction flow
-- storage links new concepts to retrieved concepts deterministically
-- pipeline, graph-store, and API-adjacent tests updated and passing during implementation
+## Current reality
 
-Operational note:
-- live validation later showed that the installed `uv tool` runtime could lag behind repo source unless installed from the built wheel
-- for real CLI behavior, prefer wheel-based install when deploying updated builds
+The current implementation has already applied the core pipeline refactor:
 
----
+```text
+retrieve -> filter -> extract -> store
+```
 
-## Target Flow
+Current behavior includes:
+- retrieval runs before filtering
+- duplicate memos skip extraction and storage
+- extraction is focused on new memo text plus limited grounded references
+- storage handles deterministic graph linking
+- strict memo CLI ingestion is separated from legacy/internal ingestion
+- strict memo CLI ingestion requires an explicit target and rejects on explicit-target failure
 
-1. `retrieve`
-2. `filter`
-3. `extract`
-4. `store`
+Current source-of-truth files:
+- `src/mind_map/app/pipeline.py`
+- `src/mind_map/app/cli/main.py`
+- `src/mind_map/processor/filter_agent.py`
+- `src/mind_map/processor/knowledge_processor.py`
+- `README.md`
+- `PROGRESS.md`
 
-Branching behavior:
-- `discard` -> end
-- `duplicate` -> end
-- `new` -> `extract -> store`
+## Why this file still exists
 
-If a memo is classified as `duplicate`, extraction is skipped.
+This document is preserved as a historical planning artifact showing the intended memo-pipeline restructuring that was later implemented.
 
----
+## Historical summary
 
-## 1. Refactor the memo pipeline flow
+The original refactor plan aimed to:
+- move duplicate detection ahead of extraction
+- keep extraction focused on new memo text
+- remove model-driven `existing_links` behavior from extraction
+- use retrieval context in a narrower, more grounded way
+- make storage responsible for deterministic linking behavior
 
-- Change the ingestion order to:
-  - `retrieve`
-  - `filter`
-  - `extract`
-  - `store`
-- Remove the current `filter -> retrieve -> extract -> store` ordering
-- Update pipeline branching so only `new` proceeds to extraction
-- If filter returns `discard` or `duplicate`, end immediately
+## Important clarification
 
-## 2. Refactor retrieval stage
-
-- Retrieve top-k similar existing nodes from the graph
-- Treat retrieved **concept** nodes as duplicate-check candidates
-- Expand each retrieved concept by one hop
-- Collect only first-hop neighbors of type:
-  - `entity`
-  - `tag`
-- Exclude neighboring concepts from expansion
-- Deduplicate expanded entity/tag reference nodes by ID
-- Keep retrieval outputs separated by role:
-  - retrieved concept candidates
-  - retrieved entity references
-  - retrieved tag references
-
-## 3. Redesign pipeline state
-
-Add or refactor state fields so they separately track:
-- raw input text
-- retrieved concept candidates
-- retrieved entity references
-- retrieved tag references
-- filter decision
-- extraction result
-- created node IDs
-- error state
-
-Remove the old assumption that a single retrieved node list is used for both duplicate detection and extraction grounding.
-
-## 4. Simplify filter decisions
-
-Replace current keep/discard behavior with:
-- `discard`
-- `duplicate`
-- `new`
-
-Filter should use:
-- the new memo text
-- retrieved concept candidates
-
-Filter should decide whether the new memo is:
-- trivial/noisy and should be discarded
-- already represented and should be skipped as duplicate
-- genuinely new and should proceed
-
-## 5. Skip extraction for duplicates
-
-If filter returns `duplicate`:
-- do not run extraction
-- do not create any nodes or edges
-- end the pipeline immediately
-- return a clear duplicate result message from `ingest_memo()`
-
-## 6. Separate extraction from concept retrieval context
-
-Extraction should not receive retrieved concept content.
-
-Extraction should use:
-- the new memo text
-- optional retrieved entity/tag references only
-
-Purpose of entity/tag references:
-- help identify canonical entities/tags
-- help infer cleaner relationships
-
-The extraction step must not:
-- copy facts from reference context unless supported by the new memo text
-- treat reference items as newly introduced facts automatically
-
-## 7. Update extraction schema
-
-Keep extraction focused on:
-- `summary`
-- `tags`
-- `entities`
-- `relationships`
-
-Remove `existing_links` from extraction output.
-
-Extraction is no longer responsible for deciding how the new concept links to retrieved graph nodes.
-
-## 8. Refactor prompts
-
-### Filter prompt
-- compare the new memo against retrieved concept candidates
-- return only one of:
-  - `discard`
-  - `duplicate`
-  - `new`
-- optionally return the matched duplicate concept IDs from retrieval candidates only
-
-### Extraction prompt
-- extract only from the new memo text
-- include retrieved entity/tag references as optional grounding aids
-- explicitly forbid copying unsupported facts from references
-- explicitly forbid using retrieved concepts as extraction input
-
-## 9. Refactor storage stage
-
-Storage runs only for `new` memos.
-
-For `new` memos:
-- create a new concept node
-- reuse existing tag nodes when normalized IDs match
-- reuse existing entity nodes when normalized IDs match
-- create:
-  - concept -> tag edges
-  - concept -> entity edges
-  - entity -> entity relationship edges
-
-Do not use model-generated `existing_links`.
-
-## 10. Define deterministic linking rules
-
-Linking to retrieved nodes should be handled by storage rules, not extraction output.
-
-Recommended rules:
-- retrieved **concepts**:
-  - link from new concept using `related_context`
-- retrieved **entities**:
-  - only link/reuse when they align with extracted entities
-- retrieved **tags**:
-  - only link/reuse when they align with extracted tags
-
-Avoid broad automatic linking that could overconnect the graph.
-
-## 11. Update schemas and code paths
-
-- Replace or extend `FilterDecision` to support `discard`, `duplicate`, and `new`
-- remove `ExistingLink` usage from the memo ingestion flow
-- update pipeline branching logic
-- update `ingest_memo()` result messages
-- update CLI/API code paths if they assume the old extraction contract
-
-## 12. Rewrite and expand tests
-
-Add or update tests for:
-- retrieval runs before filter
-- first-hop entity/tag expansion works correctly
-- neighboring concepts are excluded from expansion
-- duplicate memos skip extraction
-- duplicate memos skip storage
-- new memos proceed to extraction and storage
-- extraction does not receive retrieved concept text
-- entity/tag references are available to extraction
-- existing entity/tag nodes are reused without duplication
-- new concept nodes connect to retrieved concepts/entities/tags only through deterministic rules
-
-## 13. Validate with seeded examples
-
-Manual or automated validation scenarios:
-- same concept phrased twice -> second memo classified as duplicate
-- new memo related to an existing concept -> stored as new and linked appropriately
-- new memo mentioning known entities/tags -> existing nodes reused cleanly
-- no duplicate concept growth caused by retrieval-grounded ingestion
-
-## Notes
-
-Key design principle:
-- **duplicate detection belongs before extraction**
-- **extraction should operate on new text, with only limited entity/tag reference help**
-- **duplicate memos must not reach extraction or storage**
+If you are trying to understand or modify the current system, do **not** rely on this document alone.
+Read the source files and active top-level documentation instead.

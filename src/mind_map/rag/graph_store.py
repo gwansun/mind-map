@@ -448,6 +448,10 @@ class GraphStore:
 
         return deleted_count
 
+    def delete_edges_for_node(self, node_id: str) -> int:
+        """Public wrapper to delete all edges connected to a node."""
+        return self._delete_edges_for_node(node_id)
+
     def get_stats(self) -> dict[str, Any]:
         """Get basic statistics about the graph."""
         result = self.collection.get(include=["metadatas"])
@@ -469,6 +473,7 @@ class GraphStore:
 
         cursor = self.sqlite.execute("SELECT COUNT(*) FROM edges")
         total_edges = cursor.fetchone()[0]
+        avg_connections = (2 * total_edges / total_nodes) if total_nodes > 0 else 0.0
 
         return {
             "total_nodes": total_nodes,
@@ -476,4 +481,5 @@ class GraphStore:
             "tag_nodes": tag_nodes,
             "entity_nodes": entity_nodes,
             "total_edges": total_edges,
+            "avg_connections": avg_connections,
         }

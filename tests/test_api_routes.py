@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mind_map.core.schemas import Edge, NodeType
-from mind_map.app.pipeline import ingest_memo
+from mind_map.app.pipeline import ingest_memo_internal
 from mind_map.rag.graph_store import GraphStore
 
 
@@ -41,8 +41,8 @@ class TestMemoRouteBehavior:
 
     def test_ingest_duplicate_returns_no_new_nodes(self, mock_store: GraphStore):
         text = "Python is a programming language used for web development and data science."
-        first_success, _, first_ids = ingest_memo(text, mock_store)
-        second_success, second_message, second_ids = ingest_memo(text, mock_store)
+        first_success, _, first_ids = ingest_memo_internal(text, mock_store)
+        second_success, second_message, second_ids = ingest_memo_internal(text, mock_store)
 
         assert first_success is True
         assert len(first_ids) > 0

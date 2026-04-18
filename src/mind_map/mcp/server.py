@@ -13,7 +13,10 @@ if src_path not in sys.path:
     sys.path.append(src_path)
 
 from fastmcp import FastMCP
-from mind_map.app.pipeline import ingest_memo
+from mind_map.app.pipeline import ingest_memo_internal
+
+# Back-compat alias for older tests/callers that still patch `ingest_memo`
+ingest_memo = ingest_memo_internal
 from mind_map.core.config import get_data_dir
 from mind_map.core.schemas import Edge, NodeType
 from mind_map.rag.graph_store import GraphStore
@@ -93,7 +96,7 @@ def mind_map_memo(text: str, workspace_id: Optional[str] = None) -> str:
     try:
         current_store = get_store(workspace_id)
         llm = get_processing_llm()
-        success, message, node_ids = ingest_memo(text=text, store=current_store, llm=llm)
+        success, message, node_ids = ingest_memo_internal(text=text, store=current_store, llm=llm)
         
         if success:
             return f"Successfully stored knowledge in '{workspace_id or 'default'}'. {message} (Total nodes created: {len(node_ids)})"

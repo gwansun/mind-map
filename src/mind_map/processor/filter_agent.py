@@ -1,20 +1,14 @@
-"""Filter Agent - LLM(B) for discard/duplicate/new decisions on incoming data.
+"""Filter Agent for discard/duplicate/new decisions on incoming data.
 
-Primary: OpenClaw MiniMax CLI (openclaw agent --agent minimax)
-Fallback: heuristic
-
-Supports custom CLI template via constructor (used by --model option in CLI).
-When cli_template is set, that exact command is run; on failure the memo is rejected.
+Supports explicit memo targets resolved by the CLI.
+When a target is set, that exact model path is used; on failure the memo is rejected.
 """
 from __future__ import annotations
 
-import json
-import re
-import subprocess
-import shutil
 from typing import Any
 
 from mind_map.core.schemas import FilterDecision, GraphNode
+from mind_map.processor.cli_executor import MemoTarget, build_cli_template
 
 FILTER_MINIMAX_PROMPT_TEMPLATE = """You are a memo novelty filter for a knowledge graph system.
 Your job is to classify incoming text as one of: new, duplicate, or discard.
@@ -35,9 +29,6 @@ RETRIEVED CONCEPT CANDIDATES:
 Respond ONLY with a JSON object with keys: action (one of: new, duplicate, discard), reason (string), summary (string or null).
 """
 
-_FILTER_TIMEOUT_SECONDS = 60.0
-
-
 def _format_retrieved_concepts(concepts: list[GraphNode]) -> str:
     if not concepts:
         return "(none)"
@@ -46,53 +37,6 @@ def _format_retrieved_concepts(concepts: list[GraphNode]) -> str:
         snippet = concept.document[:160].replace("\n", " ")
         lines.append(f"- id={concept.id}: {snippet}")
     return "\n".join(lines)
-
-
-def _call_minimax_filter(
-    text: str,
-    retrieved_concepts: list[GraphNode],
-) -> FilterDecision | None:
-    """Call OpenClaw MiniMax CLI for filter classification.
-
-    Returns None on failure so caller can fall through to heuristic.
-    """
-    if shutil.which("openclaw") is None:
-        return None
-
-    prompt = FILTER_MINIMAX_PROMPT_TEMPLATE.format(
-        text=text,
-        retrieved_concepts=_format_retrieved_concepts(retrieved_concepts),
-    )
-
-    try:
-        result = subprocess.run(
-            ["openclaw", "agent", "--agent", "minimax", "--message", prompt],
-            capture_output=True,
-            text=True,
-            timeout=_FILTER_TIMEOUT_SECONDS,
-            check=False,
-        )
-        if result.returncode != 0:
-            return None
-
-        output = (result.stdout or "").strip()
-        if not output:
-            return None
-
-        json_match = re.search(r'\{[^{}]*\}', output, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-        else:
-            data = json.loads(output)
-
-        return FilterDecision(
-            action=data.get("action", "new"),
-            reason=data.get("reason", "MiniMax classification"),
-            summary=data.get("summary"),
-        )
-
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
-        return None
 
 
 def _run_custom_filter(
@@ -123,14 +67,14 @@ def _run_custom_filter(
 
 
 class FilterAgent:
-    """Filter agent with MiniMax CLI primary and heuristic fallback.
+    """Filter agent with explicit target execution and heuristic trivial discard.
 
-    When cli_template is set, that exact command is used as primary.
-    On CLI failure, the memo is rejected (caller should not continue).
+    The caller must provide a resolved target. Internal provider loading is bypassed.
+    If target execution fails, the caller should reject the memo.
     """
 
-    def __init__(self, cli_template: str | None = None) -> None:
-        self._cli_template = cli_template
+    def __init__(self, target: MemoTarget | None = None) -> None:
+        self._target = target
 
     def evaluate_sync(
         self,
@@ -144,18 +88,11 @@ class FilterAgent:
         if heuristic.action == "discard":
             return heuristic
 
-        # Use custom CLI if provided
-        if self._cli_template is not None:
-            decision = _run_custom_filter(self._cli_template, text, retrieved_concepts)
-            return decision
+        if self._target is None:
+            raise ValueError("Memo target is required for filter evaluation")
 
-        # Use built-in MiniMax CLI
-        decision = _call_minimax_filter(text, retrieved_concepts)
-        if decision is not None:
-            return decision
-
-        # Fall through to heuristic
-        return heuristic
+        decision = _run_custom_filter(build_cli_template(self._target), text, retrieved_concepts)
+        return decision
 
     def _heuristic_filter(
         self,
