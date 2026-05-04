@@ -65,7 +65,7 @@ def show_help() -> None:
     init_table.add_column("Short", style="dim", width=8)
     init_table.add_column("Description")
 
-    init_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
+    init_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
     init_table.add_row("--with-ollama", "-o", "Also initialize Ollama with selected model")
     console.print(init_table)
 
@@ -78,7 +78,7 @@ def show_help() -> None:
 
     memo_table.add_row("TEXT", "", "Text to ingest (required argument)")
     memo_table.add_row("--source TEXT", "-s", "Source identifier for the note")
-    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: ~/.openclaw/...]")
+    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
     memo_table.add_row("--openclaw [AGENT]", "", 'Required memo mode. Uses explicit OpenClaw path, default message "info"; optional agent like "minimax"')
     memo_table.add_row("--local [MODEL]", "", 'Required memo mode. Uses explicit local OpenAI-compatible path at http://127.0.0.1:11435/v1')
     console.print(memo_table)
@@ -92,7 +92,7 @@ def show_help() -> None:
 
     ask_table.add_row("QUERY", "", "Question to ask (required argument)")
     ask_table.add_row("--depth INT", "-d", "Graph traversal depth [default: 2]")
-    ask_table.add_row("--data-dir PATH", "", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
+    ask_table.add_row("--data-dir PATH", "", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
     ask_table.add_row("--model TEXT", "-m", "Specific processing model to use")
     console.print(ask_table)
 
@@ -103,7 +103,7 @@ def show_help() -> None:
     stats_table.add_column("Short", style="dim", width=8)
     stats_table.add_column("Description")
 
-    stats_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/.openclaw/workspace/projects/mind-map/data]")
+    stats_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
     console.print(stats_table)
 
     # Serve Command Options
@@ -113,6 +113,7 @@ def show_help() -> None:
     serve_table.add_column("Short", style="dim", width=8)
     serve_table.add_column("Description")
 
+    serve_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
     serve_table.add_row("--host TEXT", "-h", "Host to bind to [default: 127.0.0.1]")
     serve_table.add_row("--port INT", "-p", "Port to bind to [default: 8000]")
     console.print(serve_table)
@@ -138,7 +139,7 @@ def show_help() -> None:
 
     retrieve_table.add_row("QUERY", "", "Text to search for (required argument)")
     retrieve_table.add_row("--n-results INT", "-n", "Number of results to return [default: 5]")
-    retrieve_table.add_row("--data-dir PATH", "", "Directory for database storage [default: data]")
+    retrieve_table.add_row("--data-dir PATH", "", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
     retrieve_table.add_row("--show-context/--no-context", "", "Show connected nodes for each result [default: True]")
     retrieve_table.add_row("--max-context-per-node INT", "", "Maximum connected nodes to show per result [default: 3, 0 = unlimited]")
     console.print(retrieve_table)
@@ -187,7 +188,7 @@ mind-map serve --port 3000              # Start on custom port"""
     console.print("\n[bold yellow]CONFIGURATION[/bold yellow]\n")
     config_info = """[dim]Config file:[/dim] config.yaml
 [dim]Environment:[/dim] .env (API keys: GOOGLE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY)
-[dim]Data storage:[/dim] ./data/ (ChromaDB + SQLite)
+[dim]Data storage:[/dim] /Users/gwansun/mind-map/data (ChromaDB + SQLite)
 
 [bold]Processing LLM (B):[/bold] General processing path for non-memo flows
 [bold]Memo ingestion:[/bold] Requires explicit `--openclaw` or `--local` target, no implicit fallback

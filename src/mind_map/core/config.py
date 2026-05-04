@@ -31,7 +31,7 @@ def load_config() -> dict[str, Any]:
         return {}
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CANONICAL_DATA_DIR = Path("/Users/gwansun/.openclaw/workspace/projects/mind-map/data")
+CANONICAL_DATA_DIR = Path("/Users/gwansun/mind-map/data")
 DEFAULT_DATA_DIR = CANONICAL_DATA_DIR
 
 

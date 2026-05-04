@@ -374,16 +374,16 @@ reasoning_llm:
 When used inside the OpenClaw workspace, the active production-like data directory is:
 
 ```bash
-/Users/gwansun/.openclaw/workspace/projects/mind-map/data
+/Users/gwansun/mind-map/data
 ```
 
 Examples:
 
 ```bash
-mind-map stats --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
-mind-map memo "note" --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
-mind-map ask "query" --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
-mind-map serve --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data
+mind-map stats --data-dir /Users/gwansun/mind-map/data
+mind-map memo "note" --data-dir /Users/gwansun/mind-map/data
+mind-map ask "query" --data-dir /Users/gwansun/mind-map/data
+mind-map serve --data-dir /Users/gwansun/mind-map/data
 ```
 
 ### Backend restart path used in recent work
@@ -391,7 +391,7 @@ mind-map serve --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/d
 The backend was restarted against:
 
 ```bash
-/Users/gwansun/.openclaw/workspace/projects/mind-map/data
+/Users/gwansun/mind-map/data
 ```
 
 ### MCP Server Integration

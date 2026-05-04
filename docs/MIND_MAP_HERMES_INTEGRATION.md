@@ -152,7 +152,7 @@ File:
 ### 7.1 Constants used
 
 ```python
-MIND_MAP_DATA_DIR = "/Users/gwansun/.openclaw/workspace/projects/mind-map/data"
+MIND_MAP_DATA_DIR = "/Users/gwansun/mind-map/data"
 MIND_MAP_N_RESULTS = 3
 MIND_MAP_TIMEOUT_SEC = 10
 ```
@@ -174,7 +174,7 @@ r"^(hi|ok|hello|thanks|thank you|hey|yo|sup|bye|goodbye|yes|no|sure|k|okay|ì•ˆë…
 ### 7.3 Retrieval command used
 
 ```bash
-mind-map retrieve --data-dir /Users/gwansun/.openclaw/workspace/projects/mind-map/data --n-results 3 <query>
+mind-map retrieve --data-dir /Users/gwansun/mind-map/data --n-results 3 <query>
 ```
 
 Important note:
@@ -207,7 +207,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-MIND_MAP_DATA_DIR = "/Users/gwansun/.openclaw/workspace/projects/mind-map/data"
+MIND_MAP_DATA_DIR = "/Users/gwansun/mind-map/data"
 MIND_MAP_N_RESULTS = 3
 MIND_MAP_TIMEOUT_SEC = 10
 _ACK_RE = re.compile(

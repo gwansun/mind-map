@@ -304,7 +304,7 @@ This is a small improvement over the old plan, which placed `applyLanguageRestri
 Use the same currently intended hardcoded data dir unless changed deliberately:
 
 ```text
-/Users/gwansun/.openclaw/workspace/projects/mind-map/data
+/Users/gwansun/mind-map/data
 ```
 
 Binary lookup policy remains:
