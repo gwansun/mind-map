@@ -1,5 +1,6 @@
 """Mind Map CLI - Typer-based command line interface."""
 
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -423,7 +424,7 @@ def memo(
     from mind_map.processor.cli_executor import (
         CLIExecutionError,
         LocalTarget,
-        build_cli_template,
+        MiniMaxTarget,
         resolve_local_model,
     )
     from mind_map.rag.graph_store import GraphStore
@@ -432,22 +433,26 @@ def memo(
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
         raise typer.Exit(1)
 
-    if local is None:
-        console.print("[red]--local is required.[/red]")
-        raise typer.Exit(1)
-
-    try:
-        model_name = resolve_local_model(model=local or None)
-        target = LocalTarget(model=model_name)
-        shared_cli = build_cli_template(target)
-    except CLIExecutionError as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+    if local is not None:
+        # Explicit local mode
+        try:
+            model_name = resolve_local_model(model=local or None)
+            target = LocalTarget(model=model_name)
+        except CLIExecutionError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
+    else:
+        # Default: MiniMax API
+        api_key = os.getenv("MINIMAX_API_KEY")
+        if not api_key:
+            console.print("[red]MINIMAX_API_KEY not set.[/red]")
+            console.print("[dim]Set MINIMAX_API_KEY in your environment or pass --local for local mode.[/dim]")
+            raise typer.Exit(1)
+        target = MiniMaxTarget(api_key=api_key)
 
     store = GraphStore(data_dir)
     store.initialize()
 
-    console.print(f"[dim]CLI: {shared_cli}[/dim]")
     console.print("[yellow]Processing memo...[/yellow]")
 
     success, message, node_ids = ingest_memo_cli(

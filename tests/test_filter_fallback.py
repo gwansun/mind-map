@@ -13,7 +13,7 @@ from mind_map.app.pipeline import (
     ingest_memo_internal,
 )
 from mind_map.core.schemas import FilterDecision, NodeType, RetrievalContext
-from mind_map.processor.cli_executor import CLIExecutionError, OpenClawTarget
+from mind_map.processor.cli_executor import CLIExecutionError, MiniMaxTarget
 from mind_map.processor.filter_agent import FilterAgent, _format_retrieved_concepts
 from mind_map.rag.graph_store import GraphStore
 
@@ -37,7 +37,7 @@ class TestFilterAgent:
 
     def test_target_execution_used_for_substantive_text(self):
         """FilterAgent uses the resolved explicit target for substantive text."""
-        agent = FilterAgent(target=OpenClawTarget())
+        agent = FilterAgent(target=MiniMaxTarget(api_key="sk-test-for-filter"))
 
         with patch("mind_map.processor.filter_agent._run_custom_filter") as mock_run:
             mock_run.return_value = FilterDecision(action="new", reason="target result", summary="test")
@@ -48,7 +48,7 @@ class TestFilterAgent:
 
     def test_heuristic_discard_happens_before_target_execution(self):
         """Trivial text is discarded before any target execution."""
-        agent = FilterAgent(target=OpenClawTarget())
+        agent = FilterAgent(target=MiniMaxTarget(api_key="sk-test-for-filter"))
 
         with patch("mind_map.processor.filter_agent._run_custom_filter") as mock_run:
             decision = agent.evaluate_sync("hi", [])
@@ -70,7 +70,7 @@ class TestFilterAgent:
                 connection_count=0,
             ),
         )
-        agent = FilterAgent(target=OpenClawTarget())
+        agent = FilterAgent(target=MiniMaxTarget(api_key="sk-test-for-filter"))
 
         with patch("mind_map.processor.filter_agent._run_custom_filter") as mock_run:
             mock_run.return_value = FilterDecision(
@@ -92,7 +92,7 @@ class TestFilterAgent:
 
     def test_cli_failure_propagates(self):
         """Explicit target execution failure is propagated, no fallback."""
-        agent = FilterAgent(target=OpenClawTarget())
+        agent = FilterAgent(target=MiniMaxTarget(api_key="sk-test-for-filter"))
 
         with patch("mind_map.processor.filter_agent._run_custom_filter") as mock_run:
             mock_run.side_effect = CLIExecutionError("boom")

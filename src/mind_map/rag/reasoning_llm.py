@@ -647,13 +647,19 @@ def get_reasoning_llm() -> Any:
     config = load_config()
     reasoning_config = config.get("reasoning_llm", {})
 
-    provider = reasoning_config.get("provider", "openclaw-agent")
-    model = reasoning_config.get("model", "main")
+    provider = reasoning_config.get("provider", "minimax-direct")
+    model = reasoning_config.get("model", "MiniMax-M2.5")
     temperature = reasoning_config.get("temperature", 0.7)
     timeout = reasoning_config.get("timeout", 120)
 
     # Try configured provider first
-    if provider == "openclaw-agent":
+    if provider == "minimax-direct":
+        llm = get_minimax_llm(model, timeout)
+        if llm:
+            console.print(f"[dim]Using MiniMax API ({model})[/dim]")
+            return llm
+        console.print("[yellow]MiniMax API not available, trying fallback...[/yellow]")
+    elif provider == "openclaw-agent":
         llm = get_openclaw_agent_llm(model, timeout)
         if llm:
             console.print(f"[dim]Using OpenClaw Agent ({model})[/dim]")
@@ -683,8 +689,8 @@ def get_reasoning_llm() -> Any:
     else:
         console.print(f"[yellow]Unknown reasoning_llm provider: {provider}[/yellow]")
 
-    # Fallback chain: OpenClaw Agent -> Claude CLI -> Gemini -> Anthropic -> OpenAI
-    if provider != "openclaw-agent" and check_openclaw_agent_installed():
+    # Fallback chain: Claude CLI → Gemini → Anthropic → OpenAI
+    if provider != "claude-cli" and check_claude_cli_installed():
         llm = get_openclaw_agent_llm("main", timeout)
         if llm:
             console.print("[dim]Using OpenClaw Agent as fallback[/dim]")

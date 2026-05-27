@@ -19,12 +19,13 @@ def init_store(tmp_path: Path) -> None:
 
 
 class TestMemoCliModes:
-    def test_requires_local_mode(self) -> None:
+    def test_requires_minimax_api_key_when_no_local(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             init_store(Path(tmpdir))
-            result = runner.invoke(app, ["memo", "hello world", "--data-dir", tmpdir])
-            assert result.exit_code == 1
-            assert "--local is required" in result.stdout
+            with patch.dict(os.environ, {}, clear=True):
+                result = runner.invoke(app, ["memo", "hello world", "--data-dir", tmpdir])
+                assert result.exit_code == 1
+                assert "MINIMAX_API_KEY not set" in result.stdout
 
     def test_rejects_openclaw_option(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

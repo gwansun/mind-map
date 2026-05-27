@@ -14,7 +14,7 @@ from mind_map.app.pipeline import (
     ingest_memo_internal,
 )
 from mind_map.core.schemas import ExtractionResult, FilterDecision, NodeType, RetrievalContext
-from mind_map.processor.cli_executor import OpenClawTarget
+from mind_map.processor.cli_executor import MiniMaxTarget
 from mind_map.rag.graph_store import GraphStore
 
 
@@ -28,8 +28,8 @@ def temp_store():
 
 
 @pytest.fixture
-def openclaw_target() -> OpenClawTarget:
-    return OpenClawTarget(agent="minimax")
+def minimax_target() -> MiniMaxTarget:
+    return MiniMaxTarget(api_key="sk-test-for-pipeline")
 
 
 class TestPipelineRetrievalStep:
@@ -48,9 +48,9 @@ class TestPipelineRetrievalStep:
         assert len(node_ids) > 0
         assert "Created" in message
 
-    def test_retrieval_step_populates_retrieval_context(self, temp_store: GraphStore, openclaw_target: OpenClawTarget):
-        pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=openclaw_target)
-        initial = PipelineState(raw_text="Tell me about Python language features", target=openclaw_target)
+    def test_retrieval_step_populates_retrieval_context(self, temp_store: GraphStore, minimax_target: MiniMaxTarget):
+        pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=minimax_target)
+        initial = PipelineState(raw_text="Tell me about Python language features", target=minimax_target)
         final = pipeline.invoke(initial)
 
         assert "retrieval" in final
@@ -59,9 +59,9 @@ class TestPipelineRetrievalStep:
         assert hasattr(retrieval, "entities")
         assert hasattr(retrieval, "tags")
 
-    def test_retrieval_step_empty_for_new_graph(self, temp_store: GraphStore, openclaw_target: OpenClawTarget):
-        pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=openclaw_target)
-        initial = PipelineState(raw_text="Python is great for data science", target=openclaw_target)
+    def test_retrieval_step_empty_for_new_graph(self, temp_store: GraphStore, minimax_target: MiniMaxTarget):
+        pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=minimax_target)
+        initial = PipelineState(raw_text="Python is great for data science", target=minimax_target)
         final = pipeline.invoke(initial)
 
         retrieval = final.get("retrieval")
