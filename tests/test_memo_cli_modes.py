@@ -1,4 +1,4 @@
-"""CLI tests for memo mode selection and explicit target resolution."""
+"""CLI tests for memo local-mode selection and explicit target resolution."""
 
 import tempfile
 from pathlib import Path
@@ -19,42 +19,28 @@ def init_store(tmp_path: Path) -> None:
 
 
 class TestMemoCliModes:
-    def test_requires_exactly_one_mode(self) -> None:
+    def test_requires_local_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             init_store(Path(tmpdir))
             result = runner.invoke(app, ["memo", "hello world", "--data-dir", tmpdir])
             assert result.exit_code == 1
-            assert "Exactly one of --openclaw or --local is required" in result.stdout
+            assert "--local is required" in result.stdout
 
-    def test_rejects_both_modes(self) -> None:
+    def test_rejects_openclaw_option(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             init_store(Path(tmpdir))
             result = runner.invoke(
                 app,
-                ["memo", "hello world", "--data-dir", tmpdir, "--openclaw", "minimax", "--local", "model-a"],
+                ["memo", "hello world", "--data-dir", tmpdir, "--openclaw", "minimax"],
             )
-            assert result.exit_code == 1
-            assert "Exactly one of --openclaw or --local is required" in result.stdout
+            assert result.exit_code != 0
+            assert "No such option: --openclaw" in result.stdout
 
-    def test_openclaw_default_builds_default_message_command(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            init_store(Path(tmpdir))
-            with patch("mind_map.app.pipeline.ingest_memo_cli", return_value=(True, "Created 1 nodes", ["n1"])) as mock_ingest:
-                result = runner.invoke(app, ["memo", "hello world long enough", "--data-dir", tmpdir, "--openclaw", ""])
-                assert result.exit_code == 0
-                target = mock_ingest.call_args.kwargs["target"]
-                assert target.agent is None
-                assert target.message == "info"
-
-    def test_openclaw_agent_builds_agent_command(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            init_store(Path(tmpdir))
-            with patch("mind_map.app.pipeline.ingest_memo_cli", return_value=(True, "Created 1 nodes", ["n1"])) as mock_ingest:
-                result = runner.invoke(app, ["memo", "hello world long enough", "--data-dir", tmpdir, "--openclaw", "minimax"])
-                assert result.exit_code == 0
-                target = mock_ingest.call_args.kwargs["target"]
-                assert target.agent == "minimax"
-                assert target.message == "info"
+    def test_help_lists_only_local_option_for_memo(self) -> None:
+        result = runner.invoke(app, ["memo", "--help"])
+        assert result.exit_code == 0
+        assert "--local" in result.stdout
+        assert "--openclaw" not in result.stdout
 
     def test_local_resolves_first_model_when_omitted(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

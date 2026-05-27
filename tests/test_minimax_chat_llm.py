@@ -48,7 +48,8 @@ class TestMiniMaxChatLLMFactory:
         with patch.dict(os.environ, {"MINIMAX_API_KEY": "test-key-123"}):
             result = get_minimax_llm()
             assert result is not None
-            assert isinstance(result, type(MagicMock()))  # Should be a MiniMaxChatLLM instance
+            from mind_map.rag.reasoning_llm import MiniMaxChatLLM
+            assert isinstance(result, MiniMaxChatLLM)
 
 
 class TestMiniMaxChatLLMMessages:
@@ -59,7 +60,7 @@ class TestMiniMaxChatLLMMessages:
         from mind_map.rag.reasoning_llm import MiniMaxChatLLM
         from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-        llm = MiniMaxChatLLM()
+        llm = MiniMaxChatLLM(api_key="sk-test-123")
 
         system_msg = SystemMessage(content="You are a helpful assistant.")
         human_msg = HumanMessage(content="What is 2+2?")
@@ -98,15 +99,14 @@ class TestMiniMaxChatLLMThinkTags:
         from mind_map.rag.reasoning_llm import MiniMaxChatLLM
         from langchain_core.messages import HumanMessage
 
-        llm = MiniMaxChatLLM()
+        llm = MiniMaxChatLLM(api_key="sk-test-123")
         messages = [HumanMessage(content="Extract the JSON")]
 
         # Simulate API response with think tags
         raw_response = (
             '<think>The user wants me to extract JSON data. '
-            'Let me think about this carefully.\n\n'
+            'Let me think about this carefully.</think>'
             '{"summary": "Test summary", "tags": ["test"]}'
-            '</think>'
         )
 
         mock_response = MagicMock()

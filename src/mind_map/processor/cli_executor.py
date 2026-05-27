@@ -42,7 +42,20 @@ class LocalTarget:
     base_url: str = _DEFAULT_LOCAL_BASE_URL
 
 
-MemoTarget = OpenClawTarget | LocalTarget
+@dataclass(frozen=True)
+class MiniMaxTarget:
+    """Direct MiniMax API target for memo extraction/filtering.
+
+    Replaces the deprecated OpenClawTarget. Uses the MiniMax M2.5 model
+    via direct HTTP calls instead of shelling out to the openclaw CLI.
+    """
+    api_key: str
+    base_url: str = "https://api.minimax.io"
+    model: str = "MiniMax-M2.5"
+    max_tokens: int = 124000
+
+
+MemoTarget = OpenClawTarget | LocalTarget | MiniMaxTarget
 
 
 # ---- Provider command templates ----
@@ -118,10 +131,47 @@ def build_local_command(target: LocalTarget) -> str:
     )
 
 
+def _strip_think_tags(text: str) -> str:
+    """Strip MiniMax M-series <think>...</think> reasoning blocks."""
+    return re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
+
+
+def build_minimax_http_command(target: MiniMaxTarget) -> str:
+    """Build a Python one-liner that POSTs to MiniMax API directly.
+
+    This replaces the old `openclaw agent --agent minimax --message` pattern
+    with a direct HTTP call to the MiniMax chat completions endpoint.
+    The prompt is injected via command-line argument.
+    """
+    return (
+        "python3 -c "
+        + shlex.quote(
+            "import json, sys, urllib.request; "
+            f"api_key={target.api_key!r}; "
+            f"base_url={target.base_url.rstrip('/')!r}; "
+            f"model={target.model!r}; "
+            f"max_tokens={target.max_tokens!r}; "
+            "prompt=sys.argv[1]; "
+            "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': max_tokens}).encode(); "
+            "req=urllib.request.Request(base_url + '/v1/chat/completions', data=body, "
+            "headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key}); "
+            "resp=urllib.request.urlopen(req, timeout=60); "
+            "raw=resp.read().decode(); "
+            "data=json.loads(raw); "
+            "content=data['choices'][0]['message']['content']; "
+            "import re; "
+            "cleaned=re.sub(r'<think>.*?</think>\\s*', '', content, flags=re.DOTALL).strip(); "
+            "sys.stdout.write(cleaned)"
+        )
+    )
+
+
 def build_cli_template(target: MemoTarget) -> str:
     """Build the exact CLI template for a resolved memo target."""
     if isinstance(target, OpenClawTarget):
         return build_openclaw_command(target)
+    if isinstance(target, MiniMaxTarget):
+        return build_minimax_http_command(target)
     return build_local_command(target)
 
 

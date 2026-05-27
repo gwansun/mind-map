@@ -403,6 +403,135 @@ def get_openclaw_agent_llm(model: str = "main", timeout: int = 120) -> Any:
     return OpenClawAgentLLM(model=model, timeout=timeout)
 
 
+# ============== MiniMax Direct LLM ==============
+
+
+def _strip_think_tags(text: str) -> str:
+    """Strip MiniMax M-series <think>...</think> reasoning blocks."""
+    return re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
+
+
+class MiniMaxChatLLM(BaseChatModel):
+    """LangChain-compatible wrapper for direct MiniMax API calls.
+
+    Uses POST to https://api.minimax.io/v1/chat/completions with
+    the MiniMax-M2.5 model. Replaces the deprecated OpenClawAgentLLM.
+    """
+
+    model: str = Field(default="MiniMax-M2.5", description="MiniMax model name")
+    timeout: int = Field(default=120, description="Timeout in seconds for API calls")
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("MINIMAX_API_KEY", ""),
+        description="MiniMax API key (from MINIMAX_API_KEY env var)",
+    )
+    base_url: str = Field(
+        default="https://api.minimax.io",
+        description="MiniMax API base URL",
+    )
+    max_tokens: int = Field(default=124000, description="Maximum completion tokens")
+
+    @property
+    def _llm_type(self) -> str:
+        return "minimax-direct"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Generate response via direct MiniMax API call."""
+        if not self.api_key:
+            raise RuntimeError(
+                "MINIMAX_API_KEY not set. Set it in your environment or .env file."
+            )
+
+        try:
+            import requests
+        except ImportError:
+            raise RuntimeError("requests is required for MiniMax API calls")
+
+        # Convert LangChain messages to OpenAI format
+        openai_messages = []
+        for msg in messages:
+            if msg.type == "system":
+                openai_messages.append({"role": "system", "content": str(msg.content)})
+            elif msg.type == "human":
+                openai_messages.append({"role": "user", "content": str(msg.content)})
+            elif msg.type == "ai":
+                openai_messages.append({"role": "assistant", "content": str(msg.content)})
+            else:
+                openai_messages.append({"role": "user", "content": str(msg.content)})
+
+        payload = {
+            "model": self.model,
+            "messages": openai_messages,
+            "max_tokens": self.max_tokens,
+        }
+
+        try:
+            resp = requests.post(
+                f"{self.base_url.rstrip('/')}/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                },
+                json=payload,
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+        except requests.Timeout:
+            raise RuntimeError(f"MiniMax API timed out after {self.timeout}s")
+        except requests.RequestException as e:
+            raise RuntimeError(f"MiniMax API request failed: {e}")
+
+        body = resp.json()
+        choices = body.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"MiniMax API returned no choices: {body}")
+
+        response_text = choices[0].get("message", {}).get("content", "")
+        if not response_text:
+            raise RuntimeError("MiniMax API returned empty content")
+
+        # Strip <think> tags (M-series models wrap reasoning in them)
+        response_text = _strip_think_tags(response_text)
+
+        return ChatResult(
+            generations=[
+                ChatGeneration(message=AIMessage(content=response_text))
+            ]
+        )
+
+
+def check_minimax_api_available() -> bool:
+    """Check if MiniMax API key is configured."""
+    return bool(os.getenv("MINIMAX_API_KEY"))
+
+
+def get_minimax_llm(model: str = "MiniMax-M2.5", timeout: int = 120) -> Any:
+    """Get MiniMax Direct LLM for response generation.
+
+    Args:
+        model: MiniMax model name (default: MiniMax-M2.5)
+        timeout: Timeout in seconds
+
+    Returns:
+        MiniMaxChatLLM instance or None if API key not configured
+    """
+    if not check_minimax_api_available():
+        console.print("[yellow]MINIMAX_API_KEY not set. Cannot use MiniMax API.[/yellow]")
+        return None
+
+    api_key = os.getenv("MINIMAX_API_KEY", "")
+    return MiniMaxChatLLM(
+        model=model,
+        timeout=timeout,
+        api_key=api_key,
+    )
+
+
 # ============== Cloud Provider LLMs ==============
 
 

@@ -79,7 +79,6 @@ def show_help() -> None:
     memo_table.add_row("TEXT", "", "Text to ingest (required argument)")
     memo_table.add_row("--source TEXT", "-s", "Source identifier for the note")
     memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
-    memo_table.add_row("--openclaw [AGENT]", "", 'Required memo mode. Uses explicit OpenClaw path, default message "info"; optional agent like "minimax"')
     memo_table.add_row("--local [MODEL]", "", 'Required memo mode. Uses explicit local OpenAI-compatible path at http://127.0.0.1:11435/v1')
     console.print(memo_table)
 
@@ -169,9 +168,7 @@ mind-map model list                     # List available models
 mind-map model set phi3.5 --persist     # Set and save model choice
 
 [dim]# Ingesting notes[/dim]
-mind-map memo "Note" --openclaw                              # openclaw agent --message "info"
-mind-map memo "Note" --openclaw minimax                      # openclaw agent --agent minimax --message "info"
-mind-map memo "Note" --local                                 # local endpoint http://127.0.0.1:11435/v1 using first /models entry
+mind-map memo "Note" --local ""                              # local endpoint http://127.0.0.1:11435/v1 using first /models entry
 mind-map memo "Note" --local mlx-community/gemma-4-e4b-it-4bit   # local endpoint with explicit model id
 
 [dim]# Querying[/dim]
@@ -191,7 +188,7 @@ mind-map serve --port 3000              # Start on custom port"""
 [dim]Data storage:[/dim] /Users/gwansun/mind-map/data (ChromaDB + SQLite)
 
 [bold]Processing LLM (B):[/bold] General processing path for non-memo flows
-[bold]Memo ingestion:[/bold] Requires explicit `--openclaw` or `--local` target, no implicit fallback
+[bold]Memo ingestion:[/bold] Requires explicit `--local` target, no implicit fallback
 [bold]Reasoning LLM (A):[/bold] Claude CLI / Cloud APIs - for response generation"""
 
     console.print(config_info)
@@ -413,13 +410,6 @@ def memo(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
     ] = get_data_dir(),
-    openclaw: Annotated[
-        str | None,
-        typer.Option(
-            "--openclaw",
-            help='Use explicit OpenClaw path. Omit value for default agent, or pass an agent like "minimax"'
-        ),
-    ] = None,
     local: Annotated[
         str | None,
         typer.Option(
@@ -433,7 +423,6 @@ def memo(
     from mind_map.processor.cli_executor import (
         CLIExecutionError,
         LocalTarget,
-        OpenClawTarget,
         build_cli_template,
         resolve_local_model,
     )
@@ -443,16 +432,13 @@ def memo(
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
         raise typer.Exit(1)
 
-    if (openclaw is None and local is None) or (openclaw is not None and local is not None):
-        console.print("[red]Exactly one of --openclaw or --local is required.[/red]")
+    if local is None:
+        console.print("[red]--local is required.[/red]")
         raise typer.Exit(1)
 
     try:
-        if openclaw is not None:
-            target = OpenClawTarget(agent=openclaw or None)
-        else:
-            model_name = resolve_local_model(model=local or None)
-            target = LocalTarget(model=model_name)
+        model_name = resolve_local_model(model=local or None)
+        target = LocalTarget(model=model_name)
         shared_cli = build_cli_template(target)
     except CLIExecutionError as e:
         console.print(f"[red]{e}[/red]")
