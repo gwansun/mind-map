@@ -20,11 +20,6 @@ from rich.console import Console
 console = Console()
 
 
-def _find_openclaw_cli() -> str | None:
-    """Find the openclaw CLI binary."""
-    return shutil.which("openclaw")
-
-
 def _find_claude_cli() -> str | None:
     """Find the claude CLI binary, checking common locations."""
     # Check if it's in PATH
@@ -217,192 +212,6 @@ def get_claude_cli_llm(model: str = "sonnet", timeout: int = 120) -> Any:
     return ClaudeCLILLM(model=model, timeout=timeout)
 
 
-# ============== OpenClaw Agent LLM ==============
-
-
-def _is_openclaw_error_output(text: str) -> bool:
-    """Detect if OpenClaw output contains a runtime or error payload.
-    
-    Checks for common error patterns:
-    - JSON error objects with 'error' or 'status: error'
-    - Error messages starting with "Error:" or "RuntimeError"
-    - Traceback patterns
-    - Common error keywords
-    """
-    if not text:
-        return True  # Empty output is an error
-    
-    text_stripped = text.strip()
-    text_lower = text_stripped.lower()
-    
-    # Check for common error prefixes (including RuntimeError, Error, Failed, etc.)
-    error_prefixes = ["error:", "error -", "runtime error", "failed:", "failure:", "runtimeerror"]
-    for prefix in error_prefixes:
-        if text_lower.startswith(prefix):
-            return True
-    
-    # Also check for RuntimeError (camelCase) at start
-    if text_stripped.startswith("RuntimeError"):
-        return True
-    
-    # Check for error keywords
-    error_keywords = ["runtime error", "model error", "invalid request", "authentication failed", 
-                      "api error", "rate limit", "quota exceeded", "connection error"]
-    for keyword in error_keywords:
-        if keyword in text_lower:
-            return True
-    
-    # Check for JSON error objects (check both 'error' key and 'status': 'error')
-    if text_stripped.startswith('{') and 'error' in text_lower:
-        try:
-            import json
-            data = json.loads(text_stripped)
-            if isinstance(data, dict):
-                # Check for 'error' key or 'status': 'error'
-                if 'error' in data:
-                    return True
-                if data.get('status') == 'error':
-                    return True
-        except (json.JSONDecodeError, ValueError):
-            pass
-    
-    # Check for standalone "status: error" pattern (without JSON)
-    if 'status: error' in text_lower:
-        return True
-    
-    # Check for traceback patterns
-    if 'traceback' in text_lower and ('file "' in text_lower or 'line ' in text_lower):
-        return True
-    
-    return False
-
-
-class OpenClawAgentLLM(BaseChatModel):
-    """LangChain-compatible wrapper for OpenClaw Agent runtime.
-
-    Uses `openclaw agent --agent main --message` to generate responses,
-    leveraging the configured OpenClaw agent stack.
-    """
-
-    model: str = Field(default="main", description="OpenClaw agent name (default: main)")
-    timeout: int = Field(default=120, description="Timeout in seconds for agent calls")
-    openclaw_path: str | None = Field(default=None, description="Path to openclaw CLI binary")
-
-    def model_post_init(self, __context: Any) -> None:
-        """Find openclaw CLI path after initialization."""
-        if self.openclaw_path is None:
-            self.openclaw_path = _find_openclaw_cli()
-
-    @property
-    def _llm_type(self) -> str:
-        return "openclaw-agent"
-
-    def _generate(
-        self,
-        messages: list[BaseMessage],
-        stop: list[str] | None = None,
-        run_manager: CallbackManagerForLLMRun | None = None,
-        **kwargs: Any,
-    ) -> ChatResult:
-        """Generate response using OpenClaw Agent."""
-        if not self.openclaw_path:
-            raise RuntimeError(
-                "OpenClaw CLI not found. Ensure OpenClaw is installed."
-            )
-
-        # Convert LangChain messages to prompt text
-        prompt_parts = []
-        for msg in messages:
-            if msg.type == "system":
-                prompt_parts.append(f"System: {msg.content}")
-            elif msg.type == "human":
-                prompt_parts.append(f"Human: {msg.content}")
-            elif msg.type == "ai":
-                prompt_parts.append(f"Assistant: {msg.content}")
-            else:
-                prompt_parts.append(str(msg.content))
-
-        prompt = "\n\n".join(prompt_parts)
-
-        try:
-            result = subprocess.run(
-                [self.openclaw_path, "agent", "--agent", self.model, "--message", prompt],
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(f"OpenClaw Agent error (exit {result.returncode}): {result.stderr}")
-
-            response_text = result.stdout.strip()
-            
-            # Check for runtime/model error payloads even on success
-            if _is_openclaw_error_output(response_text):
-                raise RuntimeError(f"OpenClaw Agent runtime error: {response_text[:500]}")
-
-            return ChatResult(
-                generations=[
-                    ChatGeneration(message=AIMessage(content=response_text))
-                ]
-            )
-
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"OpenClaw Agent timed out after {self.timeout}s")
-        except FileNotFoundError:
-            raise RuntimeError(
-                "OpenClaw CLI not found. Ensure OpenClaw is installed."
-            )
-
-
-def check_openclaw_agent_installed() -> bool:
-    """Fast check - verify CLI binary exists."""
-    return _find_openclaw_cli() is not None
-
-
-def check_openclaw_agent_available() -> bool:
-    """Full check - verify CLI is installed and working.
-
-    This runs a minimal test prompt to confirm the agent responds.
-    Use check_openclaw_agent_installed() for fast preliminary checks.
-    """
-    openclaw_path = _find_openclaw_cli()
-    if not openclaw_path:
-        return False
-
-    try:
-        result = subprocess.run(
-            [openclaw_path, "agent", "--agent", "main", "--message", "respond with only: OK"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return result.returncode == 0
-    except (subprocess.TimeoutExpired, Exception):
-        return False
-
-
-def get_openclaw_agent_llm(model: str = "main", timeout: int = 120) -> Any:
-    """Get OpenClaw Agent LLM for response generation.
-
-    Args:
-        model: Agent name (default: main)
-        timeout: Timeout in seconds
-
-    Returns:
-        OpenClawAgentLLM instance or None if not available
-    """
-    if not check_openclaw_agent_installed():
-        console.print("[yellow]OpenClaw not installed.[/yellow]")
-        return None
-
-    if not check_openclaw_agent_available():
-        console.print("[yellow]OpenClaw agent not available or not working.[/yellow]")
-        return None
-
-    return OpenClawAgentLLM(model=model, timeout=timeout)
-
-
 # ============== MiniMax Direct LLM ==============
 
 
@@ -415,7 +224,7 @@ class MiniMaxChatLLM(BaseChatModel):
     """LangChain-compatible wrapper for direct MiniMax API calls.
 
     Uses POST to https://api.minimax.io/v1/chat/completions with
-    the MiniMax-M2.5 model. Replaces the deprecated OpenClawAgentLLM.
+    the MiniMax-M2.5 model.
     """
 
     model: str = Field(default="MiniMax-M2.5", description="MiniMax model name")
@@ -635,9 +444,9 @@ def get_reasoning_llm() -> Any:
     """Get LLM for reasoning tasks (LLM-A): final response generation.
 
     Returns LLM based on reasoning_llm configuration in config.yaml.
-    Defaults to OpenClaw Agent (uses configured OpenClaw agent stack).
+    Defaults to MiniMax Direct API.
 
-    Fallback priority: OpenClaw Agent → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+    Fallback priority: Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
 
     Returns:
         LangChain LLM instance or None if not available
@@ -659,12 +468,6 @@ def get_reasoning_llm() -> Any:
             console.print(f"[dim]Using MiniMax API ({model})[/dim]")
             return llm
         console.print("[yellow]MiniMax API not available, trying fallback...[/yellow]")
-    elif provider == "openclaw-agent":
-        llm = get_openclaw_agent_llm(model, timeout)
-        if llm:
-            console.print(f"[dim]Using OpenClaw Agent ({model})[/dim]")
-            return llm
-        console.print("[yellow]OpenClaw Agent not available, trying fallback...[/yellow]")
     elif provider == "claude-cli":
         llm = get_claude_cli_llm(model, timeout)
         if llm:
@@ -690,12 +493,6 @@ def get_reasoning_llm() -> Any:
         console.print(f"[yellow]Unknown reasoning_llm provider: {provider}[/yellow]")
 
     # Fallback chain: Claude CLI → Gemini → Anthropic → OpenAI
-    if provider != "claude-cli" and check_claude_cli_installed():
-        llm = get_openclaw_agent_llm("main", timeout)
-        if llm:
-            console.print("[dim]Using OpenClaw Agent as fallback[/dim]")
-            return llm
-
     if provider != "claude-cli" and check_claude_cli_installed():
         llm = get_claude_cli_llm("sonnet", 120)
         if llm:

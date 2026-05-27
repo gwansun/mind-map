@@ -21,17 +21,8 @@ class CLIExecutionError(RuntimeError):
 
 _DEFAULT_EXTRACTION_TIMEOUT = 60.0
 _FILTER_EXTRACTION_TIMEOUT = 60.0
-_DEFAULT_OPENCLAW_MESSAGE = "info"
 _DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11435/v1"
 _LOCAL_MAX_COMPLETION_TOKENS = 1200
-
-
-@dataclass(frozen=True)
-class OpenClawTarget:
-    """Explicit OpenClaw memo target resolved by the CLI."""
-
-    message: str = _DEFAULT_OPENCLAW_MESSAGE
-    agent: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,20 +46,7 @@ class MiniMaxTarget:
     max_tokens: int = 124000
 
 
-MemoTarget = OpenClawTarget | LocalTarget | MiniMaxTarget
-
-
-# ---- Provider command templates ----
-
-_OPENCLAW_TEMPLATE = "openclaw agent --message"
-_OPENCLAW_AGENT_TEMPLATE = "openclaw agent --agent {agent} --message"
-
-
-def build_openclaw_command(target: OpenClawTarget) -> str:
-    """Build the exact OpenClaw CLI command template for a resolved target."""
-    if target.agent:
-        return _OPENCLAW_AGENT_TEMPLATE.format(agent=target.agent)
-    return _OPENCLAW_TEMPLATE
+MemoTarget = LocalTarget | MiniMaxTarget
 
 
 def resolve_local_model(*, model: str | None = None, base_url: str = _DEFAULT_LOCAL_BASE_URL) -> str:
@@ -168,8 +146,6 @@ def build_minimax_http_command(target: MiniMaxTarget) -> str:
 
 def build_cli_template(target: MemoTarget) -> str:
     """Build the exact CLI template for a resolved memo target."""
-    if isinstance(target, OpenClawTarget):
-        return build_openclaw_command(target)
     if isinstance(target, MiniMaxTarget):
         return build_minimax_http_command(target)
     return build_local_command(target)

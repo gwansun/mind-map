@@ -65,8 +65,8 @@ npm run build                         # Production build
 
 Processing for memo extraction follows this order:
 
-1. **OpenClaw MiniMax primary path**
-   - uses local `openclaw agent --agent minimax --message "..."`
+1. **MiniMax API primary path**
+   - calls MiniMax API directly via `minimax` module (no CLI wrapper)
    - prompt is intentionally short and strict, with a **JSON-only** response contract
    - timeout is currently `60` seconds
 2. **Configured processing LLM fallback**
@@ -86,13 +86,12 @@ Recent extraction prompt changes:
   - max 10 retrieved nodes
   - each node snippet trimmed to 150 chars
   - empty context marker is now `(none)`
-- the goal of the prompt simplification is to reduce conversational / non-JSON MiniMax replies when invoked through OpenClaw CLI
+- the goal of the prompt simplification is to reduce conversational / non-JSON MiniMax replies when invoked through the direct API
 
-### MiniMax CLI Integration Notes
+### MiniMax API Integration Notes
 
-- correct CLI usage is `openclaw agent --agent minimax --message "..."`
-- do **not** use `--agents`; that was incorrect and breaks the primary extractor
-- `knowledge_processor.py` currently calls MiniMax through `subprocess.run(...)`
+- MiniMax is called directly via the `minimax` Python module (HTTP API)
+- `knowledge_processor.py` calls MiniMax through `subprocess.run(...)` with direct API invocation
 - JSON is parsed first directly, then with a regex fallback to tolerate wrapper text
 
 **LLM Configuration**:
@@ -100,9 +99,9 @@ Recent extraction prompt changes:
 | Role | Provider | Default Model | Purpose |
 |------|----------|---------------|---------|
 | Processing (general LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
-| Memo extraction primary | OpenClaw agent | minimax | Retrieval-grounded memo ingestion |
+| Memo extraction primary | MiniMax API (direct) | minimax | Retrieval-grounded memo ingestion |
 | Memo extraction fallback | Ollama / configured processing model | phi3.5 | Structured extraction fallback |
-| Reasoning (LLM-A) | OpenClaw Agent / Claude CLI / Cloud APIs | main | Response generation |
+| Reasoning (LLM-A) | MiniMax API / Claude CLI / Cloud APIs | main | Response generation |
 
 - **Processing (general LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
@@ -112,9 +111,9 @@ Recent extraction prompt changes:
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
   - Auto-pull (Ollama): disabled by default
 
-- **Reasoning (LLM-A)**: OpenClaw Agent (default) with Claude CLI and cloud fallbacks
-  - Priority: OpenClaw Agent → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
-  - Default: `openclaw-agent`
+- **Reasoning (LLM-A)**: MiniMax API (default) with Claude CLI and cloud fallbacks
+  - Priority: MiniMax API → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+  - Default: `minimax-direct`
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)`
 - `C_node` and `C_max` are both counted bidirectionally (source OR target)
@@ -190,7 +189,7 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 ### Processor (LLM-B)
 - `src/mind_map/processor/processing_llm.py` - Multi-provider processing LLM: Cloud APIs + Ollama
 - `src/mind_map/processor/filter_agent.py` - FilterAgent for keep/discard decisions
-- `src/mind_map/processor/knowledge_processor.py` - KnowledgeProcessor for retrieval-aware extraction with OpenClaw MiniMax primary path
+- `src/mind_map/processor/knowledge_processor.py` - KnowledgeProcessor for retrieval-aware extraction with MiniMax API primary path
 
 ### RAG (storage & reasoning)
 - `src/mind_map/rag/graph_store.py` - Hybrid ChromaDB + SQLite storage
@@ -224,7 +223,7 @@ processing_llm:
   auto_pull: false
 
 reasoning_llm:
-  provider: openclaw-agent
+  provider: minimax-direct
   model: main
   temperature: 0.7
   timeout: 120
@@ -251,7 +250,7 @@ Text Input
   → FilterAgent
   → Similarity Retrieval (top relevant existing nodes)
   → KnowledgeProcessor
-      - OpenClaw MiniMax primary
+      - MiniMax API primary
       - processing LLM fallback
       - heuristic fallback
   → GraphStore
