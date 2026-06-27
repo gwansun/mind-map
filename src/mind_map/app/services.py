@@ -89,7 +89,11 @@ def parse_memo_target(*, local: str | None, api_key: str | None) -> MemoTarget:
         ``ValueError`` if both ``local`` and ``api_key`` are missing.
     """
     if local is not None:
-        model_name = resolve_local_model(model=local or None)
+        # Lazy-import so tests patching
+        # `mind_map.processor.cli_executor.resolve_local_model` take effect.
+        from mind_map.processor.cli_executor import resolve_local_model as _resolve_local_model
+
+        model_name = _resolve_local_model(model=local or None)
         return LocalTarget(model=model_name)
     if api_key:
         return MiniMaxTarget(api_key=api_key)
@@ -141,11 +145,22 @@ def memo_ingest(
             )
         target: MemoTarget = MiniMaxTarget(api_key=api_key)
     else:
+        # Lazy-import resolve_local_model so tests patching either
+        # `mind_map.processor.cli_executor.resolve_local_model` (legacy
+        # CLI test) or `mind_map.app.services.resolve_local_model` (new
+        # services test) both work — the lookup happens at call time.
+        from mind_map.processor.cli_executor import resolve_local_model as _resolve_local_model
+
         # `local=""` triggers auto-resolve via resolve_local_model
-        model_name = resolve_local_model(model=local or None)
+        model_name = _resolve_local_model(model=local or None)
         target = LocalTarget(model=model_name)
 
-    success, message, node_ids = ingest_memo_cli(
+    # Lazy-import so tests patching `mind_map.app.pipeline.ingest_memo_cli`
+    # (the original call site in CLI ask/memo) keep working. Otherwise the
+    # patch bypasses our wrapper and our service never sees the mock.
+    from mind_map.app.pipeline import ingest_memo_cli as _ingest_memo_cli
+
+    success, message, node_ids = _ingest_memo_cli(
         text,
         store,
         target=target,

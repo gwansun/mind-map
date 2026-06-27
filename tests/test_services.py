@@ -100,7 +100,7 @@ class TestParseMemoTarget:
 
     def test_local_empty_auto_resolves(self):
         with patch(
-            "mind_map.app.services.resolve_local_model",
+            "mind_map.processor.cli_executor.resolve_local_model",
             return_value="auto-model",
         ):
             target = services.parse_memo_target(local="", api_key=None)
@@ -115,7 +115,7 @@ class TestParseMemoTarget:
 
     def test_local_wins_over_api_key(self):
         with patch(
-            "mind_map.app.services.resolve_local_model",
+            "mind_map.processor.cli_executor.resolve_local_model",
             return_value="local-model",
         ):
             target = services.parse_memo_target(local="local-model", api_key="sk-key")
@@ -142,11 +142,12 @@ class TestMemoIngest:
 
     def test_local_triggers_ingest_memo_cli(self, temp_store: GraphStore):
         with patch(
-            "mind_map.app.services.resolve_local_model",
+            "mind_map.processor.cli_executor.resolve_local_model",
             return_value="mlx-community/test",
         ):
             with patch(
-                "mind_map.app.services.ingest_memo_cli",
+                # services.memo_ingest lazy-imports from pipeline
+                "mind_map.app.pipeline.ingest_memo_cli",
                 return_value=(True, "Created 1 nodes", ["n1"]),
             ) as mock_ingest:
                 success, message, node_ids = services.memo_ingest(
@@ -160,7 +161,8 @@ class TestMemoIngest:
     def test_minimax_target_with_env_key(self, temp_store: GraphStore):
         with patch.dict(os.environ, {"MINIMAX_API_KEY": "sk-env-key"}):
             with patch(
-                "mind_map.app.services.ingest_memo_cli",
+                # services.memo_ingest lazy-imports from pipeline
+                "mind_map.app.pipeline.ingest_memo_cli",
                 return_value=(True, "Created 2 nodes", ["n1", "n2"]),
             ) as mock_ingest:
                 success, message, node_ids = services.memo_ingest(
