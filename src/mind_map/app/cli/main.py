@@ -420,47 +420,30 @@ def memo(
     ] = None,
 ) -> None:
     """Ingest a note or thought into the knowledge graph."""
-    from mind_map.app.pipeline import ingest_memo_cli
-    from mind_map.processor.cli_executor import (
-        CLIExecutionError,
-        LocalTarget,
-        MiniMaxTarget,
-        resolve_local_model,
-    )
-    from mind_map.rag.graph_store import GraphStore
-
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
         raise typer.Exit(1)
 
-    if local is not None:
-        # Explicit local mode
-        try:
-            model_name = resolve_local_model(model=local or None)
-            target = LocalTarget(model=model_name)
-        except CLIExecutionError as e:
-            console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
-    else:
-        # Default: MiniMax API
-        api_key = os.getenv("MINIMAX_API_KEY")
-        if not api_key:
-            console.print("[red]MINIMAX_API_KEY not set.[/red]")
-            console.print("[dim]Set MINIMAX_API_KEY in your environment or pass --local for local mode.[/dim]")
-            raise typer.Exit(1)
-        target = MiniMaxTarget(api_key=api_key)
+    from mind_map.app.services import memo_ingest
+    from mind_map.rag.graph_store import GraphStore
 
     store = GraphStore(data_dir)
     store.initialize()
 
     console.print("[yellow]Processing memo...[/yellow]")
 
-    success, message, node_ids = ingest_memo_cli(
-        text,
-        store,
-        target=target,
-        source_id=source,
-    )
+    try:
+        success, message, node_ids = memo_ingest(
+            text,
+            store,
+            local=local,
+            source=source,
+        )
+    except ValueError as e:
+        # MINIMAX_API_KEY not set + no --local
+        console.print(f"[red]{e}[/red]")
+        console.print("[dim]Set MINIMAX_API_KEY in your environment or pass --local for local mode.[/dim]")
+        raise typer.Exit(1)
 
     if message.startswith("Memo rejected:"):
         console.print(f"[red]{message}[/red]")
@@ -490,6 +473,7 @@ def retrieve(
     ] = 3,
 ) -> None:
     """Retrieve relevant context from the knowledge graph (no LLM, vector search only)."""
+    from mind_map.app.services import retrieve_context
     from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
@@ -500,34 +484,13 @@ def retrieve(
     store = GraphStore(data_dir)
     store.initialize()
 
-    nodes = store.query_similar(query, n_results=n_results)
-    if not nodes:
-        print(f"No relevant information found in the knowledge graph.")
-        raise typer.Exit(0)
-
-    # Enrich with relation factors and re-sort by combined score
-    nodes = store.enrich_context_nodes(nodes)
-
-    # Get connected context for all matched nodes
-    connected_context: dict[str, list[tuple[GraphNode, Edge]]] = {}
-    if show_context:
-        node_ids = [n.id for n in nodes]
-        connected_context = store.get_connected_context(node_ids)
-
-    # Output plain text (machine-readable, no Rich markup)
-    lines = ["### Relevant Context from Mind Map:"]
-    for node in nodes:
-        score = node.metadata.importance_score * (1 + (node.relation_factor or 0))
-        lines.append(f"- [{node.metadata.type.value}] (Relevance: {score:.2f}): {node.document}")
-
-        # Add connected context if available
-        if show_context and connected_context.get(node.id):
-            neighbors = connected_context[node.id]
-            if max_context_per_node > 0:
-                neighbors = neighbors[:max_context_per_node]
-            for neighbor_node, edge in neighbors:
-                lines.append(f"  └─ related [{neighbor_node.metadata.type.value}] via {edge.relation_type}: {neighbor_node.document}")
-
+    lines = retrieve_context(
+        query,
+        store,
+        n_results=n_results,
+        show_context=show_context,
+        max_context_per_node=max_context_per_node,
+    )
     print("\n".join(lines))
 
 
@@ -543,9 +506,8 @@ def ask(
     ] = None,
 ) -> None:
     """Query the knowledge graph with RAG-enhanced response."""
+    from mind_map.app.services import ask_question
     from mind_map.rag.graph_store import GraphStore
-    from mind_map.rag.reasoning_llm import get_reasoning_llm
-    from mind_map.rag.response_generator import ResponseGenerator
 
     if not data_dir.exists():
         console.print("[red]Database not initialized. Run 'mind-map init' first.[/red]")
@@ -556,19 +518,27 @@ def ask(
 
     console.print("[yellow]Querying knowledge graph...[/yellow]")
 
-    # Step 1: Retrieve relevant context nodes (may be empty for new topics)
-    nodes = store.query_similar(query, n_results=5)
+    # CLI ask always back-feeds the Q&A pair to the graph (parity with current
+    # behavior). MCP ask defaults to back_feed=False — see services.ask_question.
+    result = ask_question(
+        query,
+        store,
+        depth=depth,
+        model=model,
+        back_feed=True,
+    )
+
+    nodes = result["context_nodes"]
+    response = result["response"]
+    qa_node_ids = result["qa_node_ids"]
+    status = result["status"]
 
     if nodes:
-        # Enrich with relation factors and re-sort by combined score
-        nodes = store.enrich_context_nodes(nodes)
         console.print(f"[dim]Found {len(nodes)} relevant nodes[/dim]")
     else:
         console.print("[dim]No relevant context found — answering as new topic.[/dim]")
 
-    # Step 2: Get reasoning LLM for response generation
-    llm = get_reasoning_llm()
-    if not llm:
+    if status == "no_llm":
         console.print("[yellow]Reasoning LLM not available.[/yellow]")
         if nodes:
             console.print("[yellow]Showing raw context only.[/yellow]")
@@ -578,52 +548,19 @@ def ask(
             console.print("[yellow]No context and no reasoning LLM. Please set up Claude CLI or configure an API key.[/yellow]")
         return
 
-    # Step 3: Generate response using ResponseGenerator (works with or without context)
     console.print("[dim]Generating response with reasoning LLM...[/dim]")
-    generator = ResponseGenerator(llm)
-    response = generator.generate_sync(query, nodes)
-
     console.print(Panel(query, title="[cyan]Question[/cyan]", border_style="cyan"))
     console.print(Panel(response, title="[green]Response (LLM-A)[/green]", border_style="green"))
 
-    # Step 4: Update interaction timestamps on context nodes that were used
-    for node in nodes:
-        store.update_interaction(node.id)
-
-    # Step 5: Process Q&A pair through the internal non-CLI ingestion path and add to the knowledge graph
-    from mind_map.app.pipeline import ingest_memo_internal
-    from mind_map.core.schemas import Edge
-    from mind_map.processor.processing_llm import get_processing_llm
-
-    # extraction uses general processing_llm (cloud-auto with Ollama fallback)
-    processing_llm = get_processing_llm(model_name=model)
-    if processing_llm:
-        console.print("[dim]Summarizing Q&A with processing LLM...[/dim]")
-    else:
-        console.print("[dim]Processing LLM not available, using heuristic extraction...[/dim]")
-
-    qa_text = f"Q: {query}\nA: {response}"
-    success, message, qa_node_ids = ingest_memo_internal(
-        text=qa_text,
-        store=store,
-        llm=processing_llm,
-        source_id=f"qa_{query[:50]}",
-    )
-
-    # Step 6: Link Q&A nodes to context nodes if any existed
-    if success and qa_node_ids and nodes:
-        qa_concept_id = qa_node_ids[0]
-        for context_node in nodes:
-            store.add_edge(Edge(
-                source=qa_concept_id,
-                target=context_node.id,
-                relation_type="derived_from",
-            ))
-        console.print(f"[dim]Stored: {message} (linked to {len(nodes)} context nodes)[/dim]")
-    elif success and qa_node_ids:
-        console.print(f"[dim]Stored: {message}[/dim]")
-    elif not success:
-        console.print(f"[dim]Ingestion skipped: {message}[/dim]")
+    # Print back-feed status messages (mirrors CLI's original Step 5/6 output)
+    if qa_node_ids and nodes:
+        # success and qa_node_ids and nodes
+        console.print(f"[dim]Stored: 1 Q&A node (linked to {len(nodes)} context nodes)[/dim]")
+    elif qa_node_ids:
+        console.print(f"[dim]Stored: 1 Q&A node[/dim]")
+    elif status == "answered":
+        # ingestion was attempted but returned no new nodes
+        console.print(f"[dim]Ingestion skipped (no new nodes)[/dim]")
 
 
 @app.command()
@@ -633,6 +570,7 @@ def stats(
     ] = get_data_dir(),
 ) -> None:
     """Display knowledge graph statistics."""
+    from mind_map.app.services import graph_stats
     from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
@@ -641,7 +579,7 @@ def stats(
 
     store = GraphStore(data_dir)
     store.initialize()
-    data = store.get_stats()
+    data = graph_stats(store)
 
     table = Table(title="Knowledge Graph Statistics")
     table.add_column("Metric", style="cyan")
@@ -667,9 +605,7 @@ def prune(
     ] = 0.1,
 ) -> None:
     """Prune the least important nodes from the knowledge graph."""
-    import json
-    import math
-    from mind_map.core.schemas import NodeType
+    from mind_map.app.services import prune_graph
     from mind_map.rag.graph_store import GraphStore
 
     if not data_dir.exists():
@@ -679,76 +615,18 @@ def prune(
     store = GraphStore(data_dir)
     store.initialize()
 
-    # 1. Get all nodes
-    all_data = store.collection.get(include=["metadatas", "documents"])
-    if not all_data["ids"]:
-        console.print("[yellow]Graph is empty, nothing to prune.[/yellow]")
-        raise typer.Exit(0)
+    result = prune_graph(store, percent=percent)
 
-    # 2. Separate candidates (concept/entity) from tags
-    candidates: list[tuple[float, int]] = []  # (importance, index)
-    tag_indices: list[int] = []
-    for i, node_id in enumerate(all_data["ids"]):
-        meta = all_data["metadatas"][i] if all_data["metadatas"] else {}
-        node_type = meta.get("type", "concept")
-        if node_type == NodeType.TAG.value:
-            tag_indices.append(i)
+    if not result["deleted_nodes"] and not result["deleted_tags"]:
+        # Empty graph or no candidates — service returned a friendly summary
+        if "empty" in result["summary"].lower():
+            console.print("[yellow]Graph is empty, nothing to prune.[/yellow]")
         else:
-            importance = store.calculate_importance(node_id)
-            candidates.append((importance, i))
-
-    if not candidates:
-        console.print("[yellow]No concept or entity nodes to prune.[/yellow]")
+            console.print("[yellow]No concept or entity nodes to prune.[/yellow]")
         raise typer.Exit(0)
 
-    # 3. Sort ascending by importance, take bottom X%
-    candidates.sort(key=lambda x: x[0])
-    prune_count = max(1, math.floor(len(candidates) * percent))
-    prune_targets = candidates[:prune_count]
-    prune_indices = {idx for _, idx in prune_targets}
-    prune_ids = {all_data["ids"][idx] for _, idx in prune_targets}
-
-    # 4. Collect neighbor tag IDs for prune targets
-    tag_neighbor_ids: set[str] = set()
-    for node_id in prune_ids:
-        edges = store.get_edges(node_id)
-        for edge in edges:
-            neighbor_id = edge.target if edge.source == node_id else edge.source
-            if neighbor_id not in prune_ids:
-                tag_neighbor_ids.add(neighbor_id)
-
-    # 5. Determine which tags to remove
-    tags_to_remove: set[str] = set()
-    for tag_id in tag_neighbor_ids:
-        tag_node = store.get_node(tag_id)
-        if not tag_node or tag_node.metadata.type != NodeType.TAG:
-            continue
-        tag_edges = store.get_edges(tag_id)
-        if not tag_edges:
-            continue
-        all_connected_to_prune = all(
-            (e.target if e.source == tag_id else e.source) in prune_ids
-            for e in tag_edges
-        )
-        if all_connected_to_prune:
-            tags_to_remove.add(tag_id)
-
-    # 6. Delete edges for all prune targets
-    total_deleted_edges = 0
-    for node_id in prune_ids:
-        total_deleted_edges += store.delete_edges_for_node(node_id)
-    for tag_id in tags_to_remove:
-        total_deleted_edges += store.delete_edges_for_node(tag_id)
-
-    # 7. Delete nodes from ChromaDB
-    for node_id in prune_ids:
-        store.delete_node(node_id)
-    for tag_id in tags_to_remove:
-        store.delete_node(tag_id)
-
-    # Output result
-    console.print(f"[green]Pruned {len(prune_ids)} node(s) and {len(tags_to_remove)} tag(s).[/green]")
-    console.print(f"[dim]Removed {total_deleted_edges} edge(s).[/dim]")
+    console.print(f"[green]Pruned {len(result['deleted_nodes'])} node(s) and {len(result['deleted_tags'])} tag(s).[/green]")
+    console.print(f"[dim]Removed {result['deleted_edges_count']} edge(s).[/dim]")
 
 
 @app.command()

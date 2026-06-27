@@ -1,5 +1,6 @@
 """CLI tests for memo local-mode selection and explicit target resolution."""
 
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
