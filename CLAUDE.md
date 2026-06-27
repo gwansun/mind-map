@@ -162,15 +162,16 @@ Combined score: `importance * (1 + relation_factor)` where `relation_factor = ed
 
 ## MCP Tools
 
-The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via FastMCP. All tools accept an optional `workspace_id` for multi-workspace isolation.
+The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via FastMCP. All tools accept `data_dir` for CLI parity and optional `workspace_id` for multi-workspace isolation. Business logic lives in `src/mind_map/app/services.py` — both CLI and MCP are thin wrappers around it.
 
 | Tool | Description |
 |------|-------------|
-| `mind_map_retrieve` | Similarity search with relation-factor enrichment |
-| `mind_map_memo` | Ingest text through the retrieval-augmented LangGraph pipeline |
+| `mind_map_retrieve` | Similarity search with relation-factor enrichment and context expansion |
+| `mind_map_memo` | Ingest text through the MiniMax API or local model path |
+| `mind_map_ask` | RAG-enhanced LLM query (read-only by default; `back_feed=True` for CLI parity) |
 | `mind_map_stats` | Knowledge graph statistics |
 | `mind_map_report` | JSON report with summary stats and top-5 nodes |
-| `mind_map_prune` | Prune the least important 10% of nodes |
+| `mind_map_prune` | Prune the least important nodes (configurable `percent`, default 10%) |
 | `mind_map_health` | System health check (Ollama, databases, ProcessingLLM, integration tests) |
 
 ### Prune Algorithm (`mind_map_prune`)
@@ -197,13 +198,14 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 - `src/mind_map/rag/response_generator.py` - ResponseGenerator (LLM-A) for RAG synthesis
 - `src/mind_map/rag/llm_status.py` - Health/status checks for both LLM providers
 
-### MCP (Model Context Protocol server)
-- `src/mind_map/mcp/server.py` - FastMCP server with retrieve, memo, stats, report, prune tools
-
 ### App (orchestration, CLI, API)
+- `src/mind_map/app/services.py` - Shared business logic — single source of truth for CLI and MCP
 - `src/mind_map/app/pipeline.py` - LangGraph ingestion pipeline with retrieval before extraction
-- `src/mind_map/app/cli/main.py` - Typer CLI entry point with all commands
+- `src/mind_map/app/cli/main.py` - Typer CLI entry point (thin wrappers around services.py)
 - `src/mind_map/app/api/routes.py` - FastAPI endpoints for frontend
+
+### MCP (Model Context Protocol server)
+- `src/mind_map/mcp/server.py` - FastMCP server (thin wrappers around services.py) with 7 tools
 
 ### Frontend (Angular 18+)
 - `frontend/src/app/app.component.ts` - Main layout with three-panel design

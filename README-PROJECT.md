@@ -34,8 +34,9 @@ mind-map/
 │   │   ├── api/
 │   │   │   └── routes.py              # FastAPI endpoints
 │   │   ├── cli/
-│   │   │   └── main.py                # Typer CLI commands
-│   │   └── pipeline.py                # LangGraph ingestion pipeline
+│   │   │   └── main.py                # Typer CLI commands (thin wrappers)
+│   │   ├── pipeline.py                # LangGraph ingestion pipeline
+│   │   └── services.py                # Shared business logic (single source of truth for CLI & MCP)
 │   ├── core/
 │   │   ├── config.py                  # Configuration management
 │   │   └── schemas.py                 # Pydantic data models
@@ -145,9 +146,8 @@ Only IDs supplied through retrieval context are allowed to become stored links.
 
 Memo extraction now uses a layered fallback strategy:
 
-1. **Primary**: OpenClaw MiniMax
-   - invoked through local OpenClaw CLI with:
-     - `openclaw agent --agent minimax --message "..."`
+1. **Primary**: MiniMax API direct
+   - calls MiniMax API via the `minimax` Python module
    - uses a compact **JSON-only** prompt to reduce conversational / prose replies
    - current timeout is **60 seconds**
 2. **Fallback**: configured processing LLM
@@ -243,16 +243,16 @@ Common edge types:
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | Orchestration | **LangGraph** | Memo ingestion pipeline |
-| Memo extraction primary | **OpenClaw agent + MiniMax** | Retrieval-grounded extraction |
+| Memo extraction primary | **MiniMax API direct** | Retrieval-grounded extraction |
 | Memo extraction fallback | **Ollama phi3.5** | Structured extraction fallback |
 | General processing LLM | **Gemini / Claude / OpenAI / Ollama** | Filtering, extraction, summarization |
-| Reasoning LLM | **OpenClaw Agent / Claude CLI / Cloud APIs** | RAG-enhanced answer synthesis |
+| Reasoning LLM | **MiniMax API / Cloud APIs** | RAG-enhanced answer synthesis |
+| CLI packaging | **Typer + uv tool install** | CLI entrypoint and installation |
+| MCP Server | **FastMCP** | Hermes agent tools |
 | Vector DB | **ChromaDB** | Node embeddings and metadata |
 | Graph DB | **SQLite** | Edge registry |
 | API | **FastAPI** | REST endpoints |
 | Frontend | **Angular 18 + D3.js** | Interactive visualization |
-| MCP Server | **FastMCP** | OpenClaw agent tools |
-| CLI packaging | **Typer + uv tool install** | CLI entrypoint and installation |
 | Testing | **Pytest + Playwright** | Backend and E2E testing |
 
 ---
@@ -263,7 +263,7 @@ Common edge types:
 - **Grounded graph linking** — only retrieved node IDs can become stored `existing_links`
 - **Standalone entity persistence** — extracted entities are preserved even without relationship tuples
 - **Importance-ranked retrieval** — context ranked by connectivity and recency
-- **Multi-stage fallback behavior** — OpenClaw MiniMax → processing LLM → heuristic fallback
+- **Multi-stage fallback behavior** — MiniMax API → processing LLM → heuristic fallback
 - **Graph visualization** — D3.js force-directed graph explorer
 - **MCP integration** — tools for retrieve, memo, stats, health, report, and prune
 - **Node deletion rules** — concept delete can cascade to first-layer tags
@@ -337,7 +337,7 @@ Current installed path:
 Refresh the installed CLI from local source:
 
 ```bash
-uv tool install --reinstall /Users/gwansun/Desktop/projects/mind-map
+uv tool install --reinstall /Users/gwansun/Desktop/projects/mind-map/dist/mind_map-*.whl
 ```
 
 ---
@@ -354,7 +354,7 @@ processing_llm:
   auto_pull: false
 
 reasoning_llm:
-  provider: openclaw-agent
+  provider: minimax-direct
   model: main
   temperature: 0.7
   timeout: 120
@@ -367,11 +367,11 @@ reasoning_llm:
 
 ---
 
-## OpenClaw Integration
+## Hermes Integration
 
 ### Database Path
 
-When used inside the OpenClaw workspace, the active production-like data directory is:
+When used inside the Hermes workspace, the active production data directory is:
 
 ```bash
 /Users/gwansun/mind-map/data
@@ -396,13 +396,14 @@ The backend was restarted against:
 
 ### MCP Server Integration
 
-Mind Map exposes tools through FastMCP for OpenClaw workflows, including:
-- `mind_map_retrieve`
-- `mind_map_memo`
-- `mind_map_stats`
-- `mind_map_report`
-- `mind_map_prune`
-- `mind_map_health`
+Mind Map exposes tools through FastMCP for Hermes agentic workflows, including:
+- `mind_map_retrieve` — Search with importance ranking and context enrichment
+- `mind_map_memo` — Ingest text through the MiniMax API or local model path
+- `mind_map_ask` — RAG-enhanced LLM query (read-only by default; opt-in back-feed)
+- `mind_map_stats` — View graph statistics
+- `mind_map_prune` — Clean up low-importance nodes with configurable percentage
+- `mind_map_report` — JSON report with summary and top-5 nodes
+- `mind_map_health` — System and integration health checks
 
 ---
 
@@ -414,8 +415,7 @@ Recent backend and docs changes now reflected in project documentation:
 - added `existing_links` schema
 - validated links against retrieved node IDs only
 - fixed standalone entity persistence
-- changed memo extraction primary path to OpenClaw MiniMax
-- corrected the OpenClaw CLI flag from `--agents` to `--agent`
+- changed memo extraction primary path to MiniMax API direct
 - simplified the MiniMax extraction prompt into a short JSON-only contract
 - increased MiniMax extraction timeout from `40` to `60` seconds
 - kept processing LLM fallback, usually Ollama `phi3.5`

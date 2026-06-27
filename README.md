@@ -55,24 +55,22 @@ The strict memo CLI path now requires an explicit target and does not rely on im
 
 ### Explicit Memo Model Paths
 
-Memo ingestion requires an explicit model path at the CLI.
+Memo ingestion requires an explicit model target.
 
 Supported modes:
-1. **OpenClaw path** — `mind-map memo ... --openclaw [agent]`
-2. **Local path** — `mind-map memo ... --local [model]`
+1. **MiniMax API path** (default) — `mind-map memo "..."` with `MINIMAX_API_KEY` set in the environment
+2. **Local path** — `mind-map memo "..." --local [model]`
 
 Rules:
-- exactly one of `--openclaw` or `--local` must be provided for the memo CLI
-- if neither is provided, memo CLI ingestion fails early
-- memo CLI ingestion bypasses implicit internal model loading
-- if the selected path fails, memo CLI ingestion rejects with no fallback
-- internal non-CLI ingestion paths still use a separate internal ingestion flow
+- Exactly one of MiniMax API (implicit via env) or `--local` must provide a model target
+- If neither `MINIMAX_API_KEY` nor `--local` is provided, memo CLI ingestion fails early
+- If the selected path fails, memo CLI ingestion rejects with no fallback
+- Internal non-CLI ingestion paths still use a separate internal ingestion flow
 
 Current defaults:
-- `--openclaw` uses OpenClaw with default message `"info"`
-- `--openclaw minimax` uses agent `minimax` with message `"info"`
+- MiniMax API uses the endpoint at `api.minimax.io` via the `minimax` Python module
 - `--local` uses `http://127.0.0.1:11435/v1`
-- `--local` without a model resolves the first model returned by `/v1/models`
+- `--local` without a model value resolves the first model returned by `/v1/models`
 
 ### Importance Scoring
 
@@ -87,7 +85,7 @@ Nodes are scored by connectivity (`C`) balanced against time decay, frequently r
 | Layer | Technology |
 |-------|------------|
 | Orchestration | LangGraph |
-| Primary memo extraction | OpenClaw agent or explicit local OpenAI-compatible endpoint |
+| Primary memo extraction | MiniMax API (direct) or explicit local OpenAI-compatible endpoint |
 | Legacy/internal processing LLM | Ollama `phi3.5` or other configured processing model |
 | Vector Storage | ChromaDB |
 | Graph Storage | SQLite |
@@ -107,8 +105,8 @@ poetry run mind-map init
 # Initialize a custom database location
 poetry run mind-map init --data-dir /path/to/mind-map-data
 
-# Add a note through OpenClaw
-poetry run mind-map memo "Thinking about building a RAG system" --openclaw
+# Add a note through MiniMax API (requires MINIMAX_API_KEY set in env)
+poetry run mind-map memo "Thinking about building a RAG system"
 
 # Add a note through local endpoint
 poetry run mind-map memo "Thinking about building a RAG system" --local
@@ -127,11 +125,12 @@ poetry run mind-map serve --data-dir /path/to/mind-map-data
 
 Mind Map exposes tools via FastMCP for agentic workflows:
 
-- `mind_map_retrieve` — Search with importance ranking
-- `mind_map_memo` — Ingest through the internal non-CLI memo ingestion path
+- `mind_map_retrieve` — Search with importance ranking and context enrichment
+- `mind_map_memo` — Ingest text through the MiniMax API or local model path
+- `mind_map_ask` — RAG-enhanced LLM query (read-only by default; opt-in back-feed)
 - `mind_map_stats` — View graph statistics
-- `mind_map_prune` — Clean up low-importance nodes
+- `mind_map_prune` — Clean up low-importance nodes with configurable percentage
 - `mind_map_report` — JSON report with summary and top nodes
-- `mind_map_health` — system and integration health checks
+- `mind_map_health` — System and integration health checks
 
 See [CLAUDE.md](CLAUDE.md) for full documentation.
