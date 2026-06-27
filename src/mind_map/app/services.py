@@ -14,7 +14,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mind_map.app.pipeline import ingest_memo_cli, ingest_memo_internal
 from mind_map.core.config import DEFAULT_DATA_DIR
@@ -577,9 +577,10 @@ def report_graph(store: GraphStore) -> dict[str, Any]:
 
 
 def health_check(
-    store: GraphStore,
+    store: GraphStore | None,
     *,
     workspace_id: str,
+    store_getter: Callable[[str], GraphStore] | None = None,
 ) -> dict[str, Any]:
     """Run a comprehensive health check on the Mind Map system.
 
@@ -587,18 +588,39 @@ def health_check(
     JSON contract. Lazy-imports Ollama/LLM modules to avoid pulling them
     when not needed.
 
+    When ``store_getter`` is provided, sections that need the store will call
+    ``store_getter(workspace_id)`` lazily inside their per-section try/except.
+    This preserves the OLD architecture's per-section failure semantics: when
+    the store cannot be resolved, only the dependent checks are marked failed
+    while the rest of the report is still populated.
+
     Uses the module-level ``ingest_memo`` alias (which points to
     ``ingest_memo_internal``) for the memo-ingestion integration test, so that
     tests patching ``mind_map.mcp.server.ingest_memo`` continue to work after
     the MCP server delegates here.
     """
     # Lazy imports: health checks should not force Ollama/LLM deps at import
+    import time as _time
+
     from mind_map.processor.processing_llm import (
         check_ollama_available,
         get_available_models,
         get_selected_model,
     )
     from mind_map.rag.llm_status import get_llm_status
+
+    def _resolve_store() -> GraphStore | None:
+        """Resolve the store lazily, returning None if store_getter raises.
+
+        Falls back to the pre-resolved ``store`` arg if no getter is provided.
+        """
+        if store_getter is not None:
+            try:
+                return store_getter(workspace_id)
+            except Exception as e:
+                _store_resolution_error = e
+                return None
+        return store
 
     checks: dict[str, Any] = {}
 
@@ -631,36 +653,69 @@ def health_check(
         }
 
     # 2. ChromaDB connection
+    chroma_store: GraphStore | None = None
     try:
-        node_count = store.collection.count()
-        checks["chromadb_connection"] = {
-            "status": "pass",
-            "node_count": node_count,
-            "details": f"{node_count} nodes in collection",
-        }
+        chroma_store = _resolve_store()
     except Exception as e:
         checks["chromadb_connection"] = {
             "status": "fail",
             "node_count": 0,
             "details": str(e),
         }
+    if "chromadb_connection" not in checks:
+        if chroma_store is None:
+            checks["chromadb_connection"] = {
+                "status": "fail",
+                "node_count": 0,
+                "details": "GraphStore unavailable",
+            }
+        else:
+            try:
+                node_count = chroma_store.collection.count()
+                checks["chromadb_connection"] = {
+                    "status": "pass",
+                    "node_count": node_count,
+                    "details": f"{node_count} nodes in collection",
+                }
+            except Exception as e:
+                checks["chromadb_connection"] = {
+                    "status": "fail",
+                    "node_count": 0,
+                    "details": str(e),
+                }
 
     # 3. SQLite connection
+    sqlite_store: GraphStore | None = None
     try:
-        cursor = store.sqlite.execute("SELECT COUNT(*) FROM edges")
-        edge_count = cursor.fetchone()[0]
-        checks["sqlite_connection"] = {
-            "status": "pass",
-            "edge_count": edge_count,
-            "details": f"{edge_count} edges in database",
-        }
+        sqlite_store = _resolve_store()
     except Exception as e:
         checks["sqlite_connection"] = {
             "status": "fail",
             "edge_count": 0,
             "details": str(e),
         }
-
+    if "sqlite_connection" not in checks:
+        if sqlite_store is None:
+            checks["sqlite_connection"] = {
+                "status": "fail",
+                "edge_count": 0,
+                "details": "GraphStore unavailable",
+            }
+        else:
+            try:
+                cursor = sqlite_store.sqlite.execute("SELECT COUNT(*) FROM edges")
+                edge_count = cursor.fetchone()[0]
+                checks["sqlite_connection"] = {
+                    "status": "pass",
+                    "edge_count": edge_count,
+                    "details": f"{edge_count} edges in database",
+                }
+            except Exception as e:
+                checks["sqlite_connection"] = {
+                    "status": "fail",
+                    "edge_count": 0,
+                    "details": str(e),
+                }
     # 4. Processing LLM status
     try:
         llm_status = get_llm_status()
@@ -680,92 +735,111 @@ def health_check(
     # 5-7. Integration tests
     integration: dict[str, Any] = {}
 
-    # 5. Similarity search
-    test_id = f"_health_check_{uuid.uuid4().hex[:12]}"
+    # Resolve the store lazily. If store_getter raises (or pre-resolved store
+    # is None), mark all 3 integration sections as failed with the same error.
+    store_resolution_error: str | None = None
     try:
-        store.add_node(test_id, "health check similarity test node", NodeType.CONCEPT)
-        results = store.query_similar("health check similarity test node", n_results=1)
-        found = any(r.id == test_id for r in results)
-        store.delete_node(test_id)
-        integration["similarity_search"] = {
-            "status": "pass" if found else "fail",
-            "details": (
-                "Node inserted, queried, and cleaned up" if found
-                else "Query did not return test node"
-            ),
-        }
+        int_store = _resolve_store()
     except Exception as e:
-        try:
-            store.delete_node(test_id)
-        except Exception:
-            pass
-        integration["similarity_search"] = {
-            "status": "fail",
-            "details": str(e),
-        }
+        int_store = None
+        store_resolution_error = str(e)
 
-    # 6. Memo ingestion (heuristic only, no LLM cost)
-    try:
-        test_text = "Health check memo ingestion test for Python programming concepts"
-        success, message, node_ids = ingest_memo(
-            text=test_text, store=store, llm=None
-        )
-        for nid in node_ids:
-            store.delete_edges_for_node(nid)
-            store.delete_node(nid)
-        integration["memo_ingestion"] = {
-            "status": "pass" if success else "fail",
-            "nodes_created": len(node_ids),
-            "details": message,
-        }
-    except Exception as e:
+    if int_store is None:
+        msg = store_resolution_error or "GraphStore unavailable"
+        integration["similarity_search"] = {"status": "fail", "details": msg}
         integration["memo_ingestion"] = {
             "status": "fail",
             "nodes_created": 0,
-            "details": str(e),
+            "details": msg,
         }
-
-    # 7. Data persistence
-    n1 = f"_health_check_{uuid.uuid4().hex[:12]}"
-    n2 = f"_health_check_{uuid.uuid4().hex[:12]}"
-    try:
-        store.add_node(n1, "persistence test node A", NodeType.CONCEPT)
-        store.add_node(n2, "persistence test node B", NodeType.CONCEPT)
-
-        read_node = store.get_node(n1)
-        if read_node is None:
-            raise RuntimeError("Failed to read back node after insert")
-
-        store.add_edge(Edge(source=n1, target=n2, relation_type="test_relation"))
-        edges = store.get_edges(n1)
-        edge_found = any(
-            (e.source == n1 and e.target == n2) or (e.source == n2 and e.target == n1)
-            for e in edges
-        )
-        if not edge_found:
-            raise RuntimeError("Failed to read back edge after insert")
-
-        store.delete_edges_for_node(n1)
-        store.delete_edges_for_node(n2)
-        store.delete_node(n1)
-        store.delete_node(n2)
-
-        integration["data_persistence"] = {
-            "status": "pass",
-            "details": "Node and edge write/read/delete cycle successful",
-        }
-    except Exception as e:
+        integration["data_persistence"] = {"status": "fail", "details": msg}
+    else:
+        # 5. Similarity search
+        test_id = f"_health_check_{uuid.uuid4().hex[:12]}"
         try:
-            store.delete_edges_for_node(n1)
-            store.delete_edges_for_node(n2)
-            store.delete_node(n1)
-            store.delete_node(n2)
-        except Exception:
-            pass
-        integration["data_persistence"] = {
-            "status": "fail",
-            "details": str(e),
-        }
+            int_store.add_node(test_id, "health check similarity test node", NodeType.CONCEPT)
+            results = int_store.query_similar("health check similarity test node", n_results=1)
+            found = any(r.id == test_id for r in results)
+            int_store.delete_node(test_id)
+            integration["similarity_search"] = {
+                "status": "pass" if found else "fail",
+                "details": (
+                    "Node inserted, queried, and cleaned up" if found
+                    else "Query did not return test node"
+                ),
+            }
+        except Exception as e:
+            try:
+                int_store.delete_node(test_id)
+            except Exception:
+                pass
+            integration["similarity_search"] = {
+                "status": "fail",
+                "details": str(e),
+            }
+
+        # 6. Memo ingestion (heuristic only, no LLM cost)
+        try:
+            test_text = "Health check memo ingestion test for Python programming concepts"
+            success, message, node_ids = ingest_memo(
+                text=test_text, store=int_store, llm=None
+            )
+            for nid in node_ids:
+                int_store.delete_edges_for_node(nid)
+                int_store.delete_node(nid)
+            integration["memo_ingestion"] = {
+                "status": "pass" if success else "fail",
+                "nodes_created": len(node_ids),
+                "details": message,
+            }
+        except Exception as e:
+            integration["memo_ingestion"] = {
+                "status": "fail",
+                "nodes_created": 0,
+                "details": str(e),
+            }
+
+        # 7. Data persistence
+        n1 = f"_health_check_{uuid.uuid4().hex[:12]}"
+        n2 = f"_health_check_{uuid.uuid4().hex[:12]}"
+        try:
+            int_store.add_node(n1, "persistence test node A", NodeType.CONCEPT)
+            int_store.add_node(n2, "persistence test node B", NodeType.CONCEPT)
+
+            read_node = int_store.get_node(n1)
+            if read_node is None:
+                raise RuntimeError("Failed to read back node after insert")
+
+            int_store.add_edge(Edge(source=n1, target=n2, relation_type="test_relation"))
+            edges = int_store.get_edges(n1)
+            edge_found = any(
+                (e.source == n1 and e.target == n2) or (e.source == n2 and e.target == n1)
+                for e in edges
+            )
+            if not edge_found:
+                raise RuntimeError("Failed to read back edge after insert")
+
+            int_store.delete_edges_for_node(n1)
+            int_store.delete_edges_for_node(n2)
+            int_store.delete_node(n1)
+            int_store.delete_node(n2)
+
+            integration["data_persistence"] = {
+                "status": "pass",
+                "details": "Node and edge write/read/delete cycle successful",
+            }
+        except Exception as e:
+            try:
+                int_store.delete_edges_for_node(n1)
+                int_store.delete_edges_for_node(n2)
+                int_store.delete_node(n1)
+                int_store.delete_node(n2)
+            except Exception:
+                pass
+            integration["data_persistence"] = {
+                "status": "fail",
+                "details": str(e),
+            }
 
     checks["integration_tests"] = integration
 
@@ -788,6 +862,6 @@ def health_check(
     return {
         "status": status,
         "checks": checks,
-        "timestamp": time.time(),
+        "timestamp": _time.time(),
         "workspace": workspace_id,
     }
