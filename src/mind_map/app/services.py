@@ -91,10 +91,17 @@ def parse_memo_target(*, local: str | None, api_key: str | None) -> MemoTarget:
     if local is not None:
         # Lazy-import so tests patching
         # `mind_map.processor.cli_executor.resolve_local_model` take effect.
-        from mind_map.processor.cli_executor import resolve_local_model as _resolve_local_model
+        from mind_map.processor.cli_executor import (
+            get_local_api_key,
+            get_local_base_url,
+        )
+        from mind_map.processor.cli_executor import (
+            resolve_local_model as _resolve_local_model,
+        )
 
-        model_name = _resolve_local_model(model=local or None)
-        return LocalTarget(model=model_name)
+        base_url = get_local_base_url()
+        model_name = _resolve_local_model(model=local or None, base_url=base_url)
+        return LocalTarget(model=model_name, base_url=base_url, api_key=get_local_api_key())
     if api_key:
         return MiniMaxTarget(api_key=api_key)
     raise ValueError("Either `local` or `api_key` must be supplied")
@@ -149,11 +156,18 @@ def memo_ingest(
         # `mind_map.processor.cli_executor.resolve_local_model` (legacy
         # CLI test) or `mind_map.app.services.resolve_local_model` (new
         # services test) both work — the lookup happens at call time.
-        from mind_map.processor.cli_executor import resolve_local_model as _resolve_local_model
+        from mind_map.processor.cli_executor import (
+            get_local_api_key,
+            get_local_base_url,
+        )
+        from mind_map.processor.cli_executor import (
+            resolve_local_model as _resolve_local_model,
+        )
 
         # `local=""` triggers auto-resolve via resolve_local_model
-        model_name = _resolve_local_model(model=local or None)
-        target = LocalTarget(model=model_name)
+        base_url = get_local_base_url()
+        model_name = _resolve_local_model(model=local or None, base_url=base_url)
+        target = LocalTarget(model=model_name, base_url=base_url, api_key=get_local_api_key())
 
     # Lazy-import so tests patching `mind_map.app.pipeline.ingest_memo_cli`
     # (the original call site in CLI ask/memo) keep working. Otherwise the

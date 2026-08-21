@@ -6,6 +6,7 @@ and raises on any failure (no fallback chain).
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import shutil
@@ -25,12 +26,32 @@ _DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11435/v1"
 _LOCAL_MAX_COMPLETION_TOKENS = 1200
 
 
+def get_local_base_url() -> str:
+    """Resolve the ``--local`` OpenAI-compatible base URL.
+
+    Defaults to the historical local endpoint; ``MIND_MAP_LOCAL_BASE_URL``
+    overrides it so remote OpenAI-compatible providers (e.g. DeepSeek) can be
+    used without code changes.
+    """
+    return os.getenv("MIND_MAP_LOCAL_BASE_URL", _DEFAULT_LOCAL_BASE_URL)
+
+
+def get_local_api_key() -> str | None:
+    """Optional bearer token for the ``--local`` target.
+
+    Read once per call from ``MIND_MAP_LOCAL_API_KEY``; unset/empty means no
+    Authorization header is sent (localhost servers need none).
+    """
+    return os.getenv("MIND_MAP_LOCAL_API_KEY") or None
+
+
 @dataclass(frozen=True)
 class LocalTarget:
     """Explicit local OpenAI-compatible memo target resolved by the CLI."""
 
     model: str
     base_url: str = _DEFAULT_LOCAL_BASE_URL
+    api_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +108,17 @@ def resolve_local_model(*, model: str | None = None, base_url: str = _DEFAULT_LO
     return first["id"].strip()
 
 
+def _local_headers_literal(api_key: str | None) -> str:
+    """Headers dict literal for the local one-liner, computed at build time.
+
+    No key → plain JSON content type only (localhost servers need no auth).
+    Key set → Bearer token embedded, mirroring the MiniMax target convention.
+    """
+    if api_key:
+        return f"{{'Content-Type': 'application/json', 'Authorization': 'Bearer {api_key}'}}"
+    return "{'Content-Type': 'application/json'}"
+
+
 def build_local_command(target: LocalTarget) -> str:
     """Build a local OpenAI-compatible CLI command template using curl.
 
@@ -102,7 +134,8 @@ def build_local_command(target: LocalTarget) -> str:
             f"max_tokens={_LOCAL_MAX_COMPLETION_TOKENS!r}; "
             "prompt=sys.argv[1]; "
             "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'response_format': {'type': 'json_object'}, 'max_tokens': max_tokens}).encode(); "
-            "req=urllib.request.Request(base + '/chat/completions', data=body, headers={'Content-Type': 'application/json'}); "
+            f"headers={_local_headers_literal(target.api_key)}; "
+            "req=urllib.request.Request(base + '/chat/completions', data=body, headers=headers); "
             "resp=urllib.request.urlopen(req, timeout=60); "
             "sys.stdout.write(resp.read().decode())"
         )
