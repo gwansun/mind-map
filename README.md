@@ -69,7 +69,8 @@ Rules:
 
 Current defaults:
 - MiniMax API uses the endpoint at `api.minimax.io` via the `minimax` Python module
-- `--local` uses `http://127.0.0.1:11435/v1`
+- `--local` uses `http://127.0.0.1:11435/v1`; override with `MIND_MAP_LOCAL_BASE_URL` (any OpenAI-compatible endpoint, e.g. DeepSeek `https://api.deepseek.com/v1`)
+- optional auth: `Authorization: Bearer …` header sent only when `MIND_MAP_LOCAL_API_KEY` is set
 - `--local` without a model value resolves the first model returned by `/v1/models`
 
 ### Importance Scoring
