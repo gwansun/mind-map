@@ -69,9 +69,13 @@ Processing for memo extraction follows this order:
    - calls MiniMax API directly via `minimax` module (no CLI wrapper)
    - prompt is intentionally short and strict, with a **JSON-only** response contract
    - timeout is currently `60` seconds
-2. **Configured processing LLM fallback**
+2. **Explicit local target (`--local`)**
+   - any OpenAI-compatible endpoint; base URL defaults to `http://127.0.0.1:11435/v1`
+   - override endpoint with `MIND_MAP_LOCAL_BASE_URL` (e.g. DeepSeek `https://api.deepseek.com/v1`)
+   - optional auth: `Authorization: Bearer …` sent only when `MIND_MAP_LOCAL_API_KEY` is set
+3. **Configured processing LLM fallback**
    - commonly Ollama `phi3.5`
-3. **Heuristic fallback**
+4. **Heuristic fallback**
    - used when both model-backed paths fail
 
 This structure improves grounded linking while keeping ingestion resilient.
