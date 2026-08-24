@@ -65,14 +65,16 @@ npm run build                         # Production build
 
 Processing for memo extraction follows this order:
 
-1. **MiniMax API primary path**
-   - calls MiniMax API directly via `minimax` module (no CLI wrapper)
-   - prompt is intentionally short and strict, with a **JSON-only** response contract
-   - timeout is currently `60` seconds
-2. **Explicit local target (`--local`)**
+1. **Explicit local target (`--local`)**
    - any OpenAI-compatible endpoint; base URL defaults to `http://127.0.0.1:11435/v1`
    - override endpoint with `MIND_MAP_LOCAL_BASE_URL` (e.g. DeepSeek `https://api.deepseek.com/v1`)
    - optional auth: `Authorization: Bearer …` sent only when `MIND_MAP_LOCAL_API_KEY` is set
+2. **Default cloud target (no flags)** — priority since 2026-08-24:
+   - **DeepSeek API primary**: when `DEEPSEEK_API_KEY` is set, uses the
+     OpenAI-compatible LocalTarget transport at `https://api.deepseek.com/v1`
+     (model `deepseek-chat`, overridable via `MIND_MAP_DEEPSEEK_MODEL`)
+   - **MiniMax API fallback**: `MINIMAX_API_KEY` + `MiniMaxTarget`
+     (`api.minimax.io`, model `MiniMax-M2.5`) — legacy path, kept working
 3. **Configured processing LLM fallback**
    - commonly Ollama `phi3.5`
 4. **Heuristic fallback**

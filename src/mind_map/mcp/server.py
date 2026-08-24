@@ -130,9 +130,10 @@ def mind_map_memo(
         workspace_id: Unique identifier for the person or workspace.
 
     Note:
-        Per CLI parity, requires ``MINIMAX_API_KEY`` to be set unless
-        ``local`` is provided. Raises an explicit error otherwise — does
-        NOT silently fall back to a cloud-auto LLM.
+        Per CLI parity, requires ``DEEPSEEK_API_KEY`` (default) or
+        ``MINIMAX_API_KEY`` to be set unless ``local`` is provided. Raises an
+        explicit error otherwise — does NOT silently fall back to a cloud-auto
+        LLM.
     """
     try:
         if data_dir is not None:
@@ -153,8 +154,11 @@ def mind_map_memo(
             )
         return f"Information was not stored: {message}"
     except ValueError as e:
-        # MINIMAX_API_KEY not set + no local
-        return f"Configuration error: {e}. Set MINIMAX_API_KEY or pass `local`."
+        # No memo API key configured + no local
+        return (
+            f"Configuration error: {e}. "
+            "Set DEEPSEEK_API_KEY (or legacy MINIMAX_API_KEY) or pass `local`."
+        )
     except Exception as e:
         return f"Error storing knowledge: {str(e)}"
 

@@ -107,6 +107,35 @@ def parse_memo_target(*, local: str | None, api_key: str | None) -> MemoTarget:
     raise ValueError("Either `local` or `api_key` must be supplied")
 
 
+def resolve_default_memo_target() -> MemoTarget:
+    """Resolve the DEFAULT memo target when no ``local`` flag is passed.
+
+    Priority:
+        1. DeepSeek API (``DEEPSEEK_API_KEY``) — default since 2026-08-24.
+        2. MiniMax API (``MINIMAX_API_KEY``) — legacy fallback.
+        3. Neither set: raise ``ValueError``.
+
+    DeepSeek uses the OpenAI-compatible ``LocalTarget`` transport pointed at
+    ``api.deepseek.com/v1`` (same mechanism as ``--local``, validated E2E in
+    commit cf898c5). Model defaults to ``deepseek-chat``, overridable via
+    ``MIND_MAP_DEEPSEEK_MODEL``.
+    """
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+    if deepseek_key:
+        return LocalTarget(
+            model=os.getenv("MIND_MAP_DEEPSEEK_MODEL") or "deepseek-chat",
+            base_url="https://api.deepseek.com/v1",
+            api_key=deepseek_key,
+        )
+    minimax_key = os.getenv("MINIMAX_API_KEY")
+    if minimax_key:
+        return MiniMaxTarget(api_key=minimax_key)
+    raise ValueError(
+        "No memo API key found. Set DEEPSEEK_API_KEY (default) or "
+        "MINIMAX_API_KEY, or pass `local` for local mode."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Memo ingestion
 # ---------------------------------------------------------------------------
@@ -135,7 +164,8 @@ def memo_ingest(
         ``(success, message, node_ids)``.
 
     Raises:
-        ``ValueError`` if ``local`` is None and ``MINIMAX_API_KEY`` env unset.
+        ``ValueError`` if no memo API key is configured (DeepSeek default,
+        MiniMax fallback) and ``local`` is None.
         ``CLIExecutionError`` on local-model resolution failure.
         ``RuntimeError`` on ``ingest_memo_cli`` failure with details.
 
@@ -144,13 +174,7 @@ def memo_ingest(
         calling this — preserves CLI exit-code-1 behavior.
     """
     if local is None:
-        api_key = os.getenv("MINIMAX_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "MINIMAX_API_KEY not set. Set it in your environment or pass "
-                "`local` for local mode."
-            )
-        target: MemoTarget = MiniMaxTarget(api_key=api_key)
+        target = resolve_default_memo_target()
     else:
         # Lazy-import resolve_local_model so tests patching either
         # `mind_map.processor.cli_executor.resolve_local_model` (legacy

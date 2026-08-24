@@ -440,9 +440,12 @@ def memo(
             source=source,
         )
     except ValueError as e:
-        # MINIMAX_API_KEY not set + no --local
+        # No memo API key configured + no --local
         console.print(f"[red]{e}[/red]")
-        console.print("[dim]Set MINIMAX_API_KEY in your environment or pass --local for local mode.[/dim]")
+        console.print(
+            "[dim]Set DEEPSEEK_API_KEY (default) or MINIMAX_API_KEY in your "
+            "environment, or pass --local for local mode.[/dim]"
+        )
         raise typer.Exit(1)
 
     if message.startswith("Memo rejected:"):
