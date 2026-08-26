@@ -13,9 +13,8 @@ processing_llm:
   model: phi3.5           # Ollama model (used when provider is ollama or auto-fallback)
   temperature: 0.1
 reasoning_llm:
-  provider: minimax-direct  # Options: minimax-direct, claude-cli, gemini, anthropic, openai
-  model: MiniMax-M2.5       # For minimax-direct: model name (default: MiniMax-M2.5)
-                          # For claude-cli: sonnet, opus, haiku
+  provider: deepseek            # Options: deepseek, minimax-direct, claude-cli, gemini, anthropic, openai
+  model: deepseek-v4-flash      # For deepseek: model id (default deepseek-v4-flash, override via MIND_MAP_DEEPSEEK_MODEL)
   temperature: 0.7
   timeout: 120             # Timeout in seconds for agent/CLI calls
 
