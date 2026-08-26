@@ -7,6 +7,7 @@ from mind_map.processor.processing_llm import check_ollama_available, detect_pro
 from mind_map.rag.reasoning_llm import (
     check_anthropic_available,
     check_claude_cli_available,
+    check_deepseek_available,
     check_gemini_available,
     check_openai_available,
 )
@@ -35,10 +36,13 @@ def get_llm_status() -> dict[str, Any]:
 
     # Check Reasoning LLM (LLM-A)
     reasoning_config = config.get("reasoning_llm", {})
-    reasoning_provider = reasoning_config.get("provider", "claude-cli")
+    reasoning_provider = reasoning_config.get("provider", "deepseek")
 
     reasoning_status = "offline"
-    if reasoning_provider == "claude-cli":
+    if reasoning_provider == "deepseek":
+        if check_deepseek_available():
+            reasoning_status = "online"
+    elif reasoning_provider == "claude-cli":
         if check_claude_cli_available():
             reasoning_status = "online"
     elif reasoning_provider in ["gemini", "google"]:

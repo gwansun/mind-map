@@ -438,6 +438,29 @@ class TestGetLLMStatus:
                         assert status["processing_llm"]["model"] == "mistral"
                         assert status["processing_llm"]["status"] == "offline"
 
+    def test_reports_deepseek_online_when_key_present(self):
+        from mind_map.rag.llm_status import get_llm_status
+
+        config = {
+            "processing_llm": {"provider": "ollama", "model": "phi3.5"},
+            "reasoning_llm": {"provider": "deepseek", "model": "deepseek-v4-flash"},
+        }
+        # NOTE: do NOT use the shared _clean_env fixture here — it does not
+        # clear DEEPSEEK_API_KEY. Use patch.dict to control it explicitly.
+        # NOTE: llm_status imports load_config at module level
+        # (`from mind_map.core.config import load_config`), so patch the
+        # llm_status-local binding — LOAD_CONFIG_PATCH (the config-module
+        # attribute) does not rebind it.
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
+            with patch("mind_map.rag.llm_status.load_config", return_value=config):
+                with patch(
+                    "mind_map.rag.llm_status.check_ollama_available",
+                    return_value=False,
+                ):
+                    status = get_llm_status()
+        assert status["reasoning_llm"]["provider"] == "deepseek"
+        assert status["reasoning_llm"]["status"] == "online"
+
 
 # ============== GraphNode.relation_factor ==============
 
