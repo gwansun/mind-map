@@ -107,7 +107,7 @@ Recent extraction prompt changes:
 | Processing (general LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
 | Memo extraction primary | MiniMax API (direct) | minimax | Retrieval-grounded memo ingestion |
 | Memo extraction fallback | Ollama / configured processing model | phi3.5 | Structured extraction fallback |
-| Reasoning (LLM-A) | MiniMax API / Claude CLI / Cloud APIs | main | Response generation |
+| Reasoning (LLM-A) | DeepSeek API (direct) / fallbacks | deepseek-v4-flash | Response generation |
 
 - **Processing (general LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
@@ -117,9 +117,9 @@ Recent extraction prompt changes:
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
   - Auto-pull (Ollama): disabled by default
 
-- **Reasoning (LLM-A)**: MiniMax API (default) with Claude CLI and cloud fallbacks
-  - Priority: MiniMax API → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
-  - Default: `minimax-direct`
+- **Reasoning (LLM-A)**: DeepSeek API (default) with fallbacks
+  - Priority: DeepSeek API → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+  - Default: `deepseek` (`deepseek-v4-flash`; override via `MIND_MAP_DEEPSEEK_MODEL`)
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)`
 - `C_node` and `C_max` are both counted bidirectionally (source OR target)
