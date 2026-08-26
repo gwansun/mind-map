@@ -85,9 +85,11 @@ class TestDeepSeekProviderDispatch:
                 "timeout": 120,
             }
         }
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
-            with patch("mind_map.core.config.load_config", return_value=config):
-                llm = get_reasoning_llm()
+        with (
+            patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}),
+            patch("mind_map.core.config.load_config", return_value=config),
+        ):
+            llm = get_reasoning_llm()
         assert llm is not None
         assert llm._llm_type == "deepseek"
 
@@ -102,23 +104,25 @@ class TestDeepSeekProviderDispatch:
                 "timeout": 120,
             }
         }
-        with patch.dict(os.environ, {}, clear=True):
-            with patch("mind_map.core.config.load_config", return_value=config):
-                with patch(
-                    "mind_map.rag.reasoning_llm.check_claude_cli_installed",
-                    return_value=False,
-                ):
-                    with patch(
-                        "mind_map.rag.reasoning_llm.check_gemini_available",
-                        return_value=False,
-                    ):
-                        with patch(
-                            "mind_map.rag.reasoning_llm.check_anthropic_available",
-                            return_value=False,
-                        ):
-                            with patch(
-                                "mind_map.rag.reasoning_llm.check_openai_available",
-                                return_value=False,
-                            ):
-                                llm = get_reasoning_llm()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("mind_map.core.config.load_config", return_value=config),
+            patch(
+                "mind_map.rag.reasoning_llm.check_claude_cli_installed",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.reasoning_llm.check_gemini_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.reasoning_llm.check_anthropic_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.reasoning_llm.check_openai_available",
+                return_value=False,
+            ),
+        ):
+            llm = get_reasoning_llm()
         assert llm is None

@@ -385,8 +385,8 @@ class DeepSeekChatLLM(BaseChatModel):
 
         try:
             import requests
-        except ImportError:
-            raise RuntimeError("requests is required for DeepSeek API calls")
+        except ImportError as e:
+            raise RuntimeError("requests is required for DeepSeek API calls") from e
 
         openai_messages = []
         for msg in messages:
@@ -416,10 +416,10 @@ class DeepSeekChatLLM(BaseChatModel):
                 timeout=self.timeout,
             )
             resp.raise_for_status()
-        except requests.Timeout:
-            raise RuntimeError(f"DeepSeek API timed out after {self.timeout}s")
+        except requests.Timeout as e:
+            raise RuntimeError(f"DeepSeek API timed out after {self.timeout}s") from e
         except requests.RequestException as e:
-            raise RuntimeError(f"DeepSeek API request failed: {e}")
+            raise RuntimeError(f"DeepSeek API request failed: {e}") from e
 
         body = resp.json()
         choices = body.get("choices", [])
