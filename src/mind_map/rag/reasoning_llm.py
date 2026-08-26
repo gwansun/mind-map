@@ -590,6 +590,12 @@ def get_reasoning_llm() -> Any:
             console.print(f"[dim]Using MiniMax API ({model})[/dim]")
             return llm
         console.print("[yellow]MiniMax API not available, trying fallback...[/yellow]")
+    elif provider == "deepseek":
+        llm = get_deepseek_llm(model, timeout)
+        if llm:
+            console.print(f"[dim]Using DeepSeek API ({model})[/dim]")
+            return llm
+        console.print("[yellow]DeepSeek API not available, trying fallback...[/yellow]")
     elif provider == "claude-cli":
         llm = get_claude_cli_llm(model, timeout)
         if llm:
@@ -614,7 +620,13 @@ def get_reasoning_llm() -> Any:
     else:
         console.print(f"[yellow]Unknown reasoning_llm provider: {provider}[/yellow]")
 
-    # Fallback chain: Claude CLI → Gemini → Anthropic → OpenAI
+    # Fallback chain: DeepSeek → Claude CLI → Gemini → Anthropic → OpenAI
+    if provider != "deepseek" and check_deepseek_available():
+        llm = get_deepseek_llm("deepseek-v4-flash", timeout)
+        if llm:
+            console.print("[dim]Using DeepSeek API as fallback[/dim]")
+            return llm
+
     if provider != "claude-cli" and check_claude_cli_installed():
         llm = get_claude_cli_llm("sonnet", 120)
         if llm:

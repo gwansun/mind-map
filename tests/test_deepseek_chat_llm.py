@@ -71,3 +71,54 @@ class TestDeepSeekFactory:
 
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
             assert check_deepseek_available() is True
+
+
+class TestDeepSeekProviderDispatch:
+    def test_configured_provider_deepseek_returns_deepseek_llm(self):
+        from mind_map.rag.reasoning_llm import get_reasoning_llm
+
+        config = {
+            "reasoning_llm": {
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "temperature": 0.7,
+                "timeout": 120,
+            }
+        }
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
+            with patch("mind_map.core.config.load_config", return_value=config):
+                llm = get_reasoning_llm()
+        assert llm is not None
+        assert llm._llm_type == "deepseek"
+
+    def test_deepseek_unavailable_falls_through(self):
+        from mind_map.rag.reasoning_llm import get_reasoning_llm
+
+        config = {
+            "reasoning_llm": {
+                "provider": "deepseek",
+                "model": "deepseek-v4-flash",
+                "temperature": 0.7,
+                "timeout": 120,
+            }
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("mind_map.core.config.load_config", return_value=config):
+                with patch(
+                    "mind_map.rag.reasoning_llm.check_claude_cli_installed",
+                    return_value=False,
+                ):
+                    with patch(
+                        "mind_map.rag.reasoning_llm.check_gemini_available",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "mind_map.rag.reasoning_llm.check_anthropic_available",
+                            return_value=False,
+                        ):
+                            with patch(
+                                "mind_map.rag.reasoning_llm.check_openai_available",
+                                return_value=False,
+                            ):
+                                llm = get_reasoning_llm()
+        assert llm is None
