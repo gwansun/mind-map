@@ -230,8 +230,13 @@ async def ask(request: AskRequest) -> AskResponse:
     response = await generator.generate(request.query, context_nodes)
 
     # Update importance scores for context nodes that were used
+    # NOTE: GraphStore.update_interaction is not implemented. The guard mirrors
+    # services.ask_question so POST /ask does not 500 with AttributeError.
     for node in context_nodes:
-        store.update_interaction(node.id)
+        try:
+            store.update_interaction(node.id)  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
 
     # Step 4: Process Q&A pair through LLM(B) pipeline and add to knowledge graph
     # This happens regardless of whether context existed - grows the KG

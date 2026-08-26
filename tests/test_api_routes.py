@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,6 +49,51 @@ class TestMemoRouteBehavior:
         assert second_success is False
         assert "Skipped duplicate" in second_message
         assert second_ids == []
+
+
+class TestAskRoute:
+    """Tests for POST /ask."""
+
+    def test_ask_returns_answer_without_update_interaction_crash(
+        self, client: TestClient, mock_store: GraphStore
+    ):
+        """POST /ask must return 200 even though GraphStore.update_interaction
+        is not implemented (regression: routes.py used to call it unguarded,
+        raising AttributeError -> HTTP 500 -> frontend error bubble)."""
+        mock_store.add_node(
+            "concept_1",
+            "The mind-map project is a knowledge graph system.",
+            NodeType.CONCEPT,
+        )
+
+        with (
+            patch(
+                "mind_map.rag.reasoning_llm.get_reasoning_llm",
+                return_value=object(),
+            ),
+            patch(
+                "mind_map.rag.response_generator.ResponseGenerator",
+                return_value=MagicMock(
+                    generate=AsyncMock(return_value="Generated answer")
+                ),
+            ),
+            patch(
+                "mind_map.app.pipeline.ingest_memo_internal",
+                return_value=(True, "ok", []),
+            ),
+            patch(
+                "mind_map.processor.processing_llm.get_processing_llm",
+                return_value=None,
+            ),
+        ):
+            response = client.post(
+                "/ask", json={"query": "What is the mind-map project?", "depth": 2}
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["query"] == "What is the mind-map project?"
+        assert data["response"] == "Generated answer"
 
 
 class TestDeleteNode:
