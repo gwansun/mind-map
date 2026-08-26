@@ -341,6 +341,128 @@ def get_minimax_llm(model: str = "MiniMax-M2.5", timeout: int = 120) -> Any:
     )
 
 
+# ============== DeepSeek Direct LLM ==============
+
+
+class DeepSeekChatLLM(BaseChatModel):
+    """LangChain-compatible wrapper for direct DeepSeek API calls.
+
+    Uses POST to https://api.deepseek.com/v1/chat/completions with the
+    deepseek-v4-flash model (OpenAI-compatible transport). Mirrors MiniMaxChatLLM.
+    """
+
+    model: str = Field(
+        default_factory=lambda: os.getenv("MIND_MAP_DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        description="DeepSeek model name (override via MIND_MAP_DEEPSEEK_MODEL)",
+    )
+    timeout: int = Field(default=120, description="Timeout in seconds for API calls")
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""),
+        description="DeepSeek API key (from DEEPSEEK_API_KEY env var)",
+    )
+    base_url: str = Field(
+        default="https://api.deepseek.com/v1",
+        description="DeepSeek API base URL",
+    )
+    max_tokens: int = Field(default=8192, description="Maximum completion tokens")
+
+    @property
+    def _llm_type(self) -> str:
+        return "deepseek"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        """Generate response via direct DeepSeek API call."""
+        if not self.api_key:
+            raise RuntimeError(
+                "DEEPSEEK_API_KEY not set. Set it in your environment or .env file."
+            )
+
+        try:
+            import requests
+        except ImportError:
+            raise RuntimeError("requests is required for DeepSeek API calls")
+
+        openai_messages = []
+        for msg in messages:
+            if msg.type == "system":
+                openai_messages.append({"role": "system", "content": str(msg.content)})
+            elif msg.type == "human":
+                openai_messages.append({"role": "user", "content": str(msg.content)})
+            elif msg.type == "ai":
+                openai_messages.append({"role": "assistant", "content": str(msg.content)})
+            else:
+                openai_messages.append({"role": "user", "content": str(msg.content)})
+
+        payload = {
+            "model": self.model,
+            "messages": openai_messages,
+            "max_tokens": self.max_tokens,
+        }
+
+        try:
+            resp = requests.post(
+                f"{self.base_url.rstrip('/')}/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                },
+                json=payload,
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+        except requests.Timeout:
+            raise RuntimeError(f"DeepSeek API timed out after {self.timeout}s")
+        except requests.RequestException as e:
+            raise RuntimeError(f"DeepSeek API request failed: {e}")
+
+        body = resp.json()
+        choices = body.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"DeepSeek API returned no choices: {body}")
+
+        response_text = choices[0].get("message", {}).get("content", "")
+        if not response_text:
+            raise RuntimeError("DeepSeek API returned empty content")
+
+        return ChatResult(
+            generations=[
+                ChatGeneration(message=AIMessage(content=response_text))
+            ]
+        )
+
+
+def check_deepseek_available() -> bool:
+    """Check if DeepSeek API key is configured."""
+    return bool(os.getenv("DEEPSEEK_API_KEY"))
+
+
+def get_deepseek_llm(
+    model: str | None = None, timeout: int = 120
+) -> Any:
+    """Get DeepSeek Direct LLM for response generation.
+
+    Returns DeepSeekChatLLM instance or None if API key not configured.
+    """
+    if not check_deepseek_available():
+        console.print("[yellow]DEEPSEEK_API_KEY not set. Cannot use DeepSeek API.[/yellow]")
+        return None
+
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    llm = DeepSeekChatLLM(
+        timeout=timeout,
+        api_key=api_key,
+    )
+    if model is not None:
+        llm.model = model
+    return llm
+
+
 # ============== Cloud Provider LLMs ==============
 
 
