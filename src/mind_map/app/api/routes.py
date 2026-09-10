@@ -2,15 +2,14 @@
 
 from typing import Any
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Importing mind_map.core.config loads the PROJECT .env (absolute path via
+# ENV_PATH). A bare load_dotenv() here would instead read the cwd's .env.
 from mind_map.core.config import get_data_dir
 from mind_map.rag.graph_store import GraphStore
-
-load_dotenv()
 
 app = FastAPI(
     title="Mind Map API",

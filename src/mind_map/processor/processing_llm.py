@@ -10,12 +10,13 @@ import os
 import platform
 import shutil
 import subprocess
-from pathlib import Path
 from typing import Any
 
 import ollama
 from rich.console import Console
 from rich.table import Table
+
+from mind_map.core.config import CONFIG_PATH
 
 console = Console()
 
@@ -265,7 +266,10 @@ def set_processing_model(model_name: str, persist: bool = False) -> bool:
     if persist:
         try:
             import yaml
-            config_path = Path("config.yaml")
+            # Resolved from the package location, never the cwd: a relative
+            # path here would create/overwrite a stray config.yaml wherever
+            # the process happens to be running.
+            config_path = CONFIG_PATH
 
             if config_path.exists():
                 with open(config_path) as f:

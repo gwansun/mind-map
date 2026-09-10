@@ -7,30 +7,43 @@ import yaml
 from dotenv import load_dotenv
 from rich.console import Console
 
-load_dotenv()
+# Resolve project files from the PACKAGE location, never the process cwd.
+#
+# A cwd-relative lookup silently reads the WRONG config.yaml whenever the
+# process runs from another directory: an MCP server spawned by Hermes runs
+# with cwd=~/.hermes, so ``Path("config.yaml")`` opened Hermes's own config,
+# found no ``reasoning_llm`` key, and every setting fell back to its default
+# (which sent ``mind_map_ask`` to MiniMax instead of the configured route).
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+ENV_PATH = PROJECT_ROOT / ".env"
+
+load_dotenv(ENV_PATH)
 
 console = Console()
 
 
 def load_config() -> dict[str, Any]:
-    """Load configuration from config.yaml.
+    """Load configuration from the project's config.yaml.
+
+    The path is resolved from ``PROJECT_ROOT``, so the result does not depend
+    on the process working directory.
 
     Returns:
         Configuration dictionary, or empty dict if file not found or invalid
     """
-    config_path = Path("config.yaml")
-    if not config_path.exists():
-        console.print("[yellow]config.yaml not found, using defaults[/yellow]")
+    if not CONFIG_PATH.exists():
+        console.print(f"[yellow]{CONFIG_PATH} not found, using defaults[/yellow]")
         return {}
 
     try:
-        with open(config_path) as f:
+        with open(CONFIG_PATH) as f:
             return yaml.safe_load(f) or {}
     except Exception as e:
         console.print(f"[yellow]Error loading config.yaml: {e}[/yellow]")
         return {}
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 CANONICAL_DATA_DIR = Path("/Users/gwansun/mind-map/data")
 DEFAULT_DATA_DIR = CANONICAL_DATA_DIR
 
