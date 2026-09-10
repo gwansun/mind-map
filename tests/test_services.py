@@ -161,7 +161,7 @@ class TestMemoIngest:
     def test_minimax_target_with_env_key(self, temp_store: GraphStore):
         # MINIMAX is now the LEGACY fallback — ensure DeepSeek key (default)
         # isn't picked up from .env so we exercise the fallback path.
-        env = {k: v for k, v in os.environ.items() if k != "DEEPSEEK_API_KEY"}
+        env = {k: v for k, v in os.environ.items() if k != "COMMANDCODE_API_KEY"}
         env["MINIMAX_API_KEY"] = "sk-env-key"
         with patch.dict(os.environ, env, clear=True):
             with patch(
@@ -178,8 +178,8 @@ class TestMemoIngest:
                 assert mock_ingest.call_args.kwargs["source_id"] == "test-source"
 
     def test_deepseek_default_target(self, temp_store: GraphStore):
-        """Default path resolves DeepSeek LocalTarget when its key is set."""
-        env = {"DEEPSEEK_API_KEY": "sk-env-deepseek"}
+        """Default path resolves the CommandCode LocalTarget when its key is set."""
+        env = {"COMMANDCODE_API_KEY": "sk-env-deepseek"}
         with patch.dict(os.environ, env, clear=True), patch(
             "mind_map.app.pipeline.ingest_memo_cli",
             return_value=(True, "Created 2 nodes", ["n1", "n2"]),
@@ -190,8 +190,8 @@ class TestMemoIngest:
             assert success is True
             target = mock_ingest.call_args.kwargs["target"]
             assert isinstance(target, LocalTarget)
-            assert target.model == "deepseek-chat"
-            assert target.base_url == "https://api.deepseek.com/v1"
+            assert target.model == "deepseek/deepseek-v4.1-flash"
+            assert target.base_url == "https://api.commandcode.ai/provider/v1"
             assert target.api_key == "sk-env-deepseek"
 
 

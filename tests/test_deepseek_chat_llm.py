@@ -14,19 +14,32 @@ class TestDeepSeekChatLLM:
         llm = DeepSeekChatLLM()
         assert llm._llm_type == "deepseek"
 
+    def test_defaults_target_commandcode(self):
+        """Route binding: the default transport is the CommandCode gateway."""
+        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "test"}, clear=False):
+            llm = DeepSeekChatLLM()
+        assert llm.base_url == "https://api.commandcode.ai/provider/v1"
+        assert llm.model == "deepseek/deepseek-v4.1-flash"
+
+    def test_no_direct_deepseek_route_remains(self):
+        """Guard: no construction path may fall back to api.deepseek.com."""
+        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "test"}, clear=False):
+            llm = DeepSeekChatLLM()
+        assert "api.deepseek.com" not in llm.base_url
+
     def test_api_key_from_env(self):
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test-123"}):
+        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test-123"}):
             llm = DeepSeekChatLLM()
             assert llm.api_key == "sk-test-123"
 
     def test_defaults(self):
         llm = DeepSeekChatLLM(api_key="sk-test")
-        assert llm.model == "deepseek-v4-flash"
-        assert llm.base_url == "https://api.deepseek.com/v1"
+        assert llm.model == "deepseek/deepseek-v4.1-flash"
+        assert llm.base_url == "https://api.commandcode.ai/provider/v1"
         assert llm.max_tokens == 8192
 
     def test_model_override_env(self):
-        with patch.dict(os.environ, {"MIND_MAP_DEEPSEEK_MODEL": "deepseek-v4-pro"}):
+        with patch.dict(os.environ, {"MIND_MAP_LLM_MODEL": "deepseek-v4-pro"}):
             llm = DeepSeekChatLLM(api_key="sk-test")
             assert llm.model == "deepseek-v4-pro"
 
@@ -51,11 +64,11 @@ class TestDeepSeekChatLLM:
                 {"role": "system", "content": "You are helpful"},
                 {"role": "user", "content": "Hello"},
             ]
-            assert kwargs["json"]["model"] == "deepseek-v4-flash"
+            assert kwargs["json"]["model"] == "deepseek/deepseek-v4.1-flash"
 
     def test_missing_key_raises(self):
         llm = DeepSeekChatLLM(api_key="")
-        with pytest.raises(RuntimeError, match="DEEPSEEK_API_KEY not set"):
+        with pytest.raises(RuntimeError, match="COMMANDCODE_API_KEY not set"):
             llm._generate([HumanMessage(content="hi")])
 
 
@@ -69,7 +82,7 @@ class TestDeepSeekFactory:
     def test_check_available(self):
         from mind_map.rag.reasoning_llm import check_deepseek_available
 
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
+        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}):
             assert check_deepseek_available() is True
 
 
@@ -80,13 +93,13 @@ class TestDeepSeekProviderDispatch:
         config = {
             "reasoning_llm": {
                 "provider": "deepseek",
-                "model": "deepseek-v4-flash",
+                "model": "deepseek/deepseek-v4.1-flash",
                 "temperature": 0.7,
                 "timeout": 120,
             }
         }
         with (
-            patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}),
+            patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}),
             patch("mind_map.core.config.load_config", return_value=config),
         ):
             llm = get_reasoning_llm()
@@ -99,7 +112,7 @@ class TestDeepSeekProviderDispatch:
         config = {
             "reasoning_llm": {
                 "provider": "deepseek",
-                "model": "deepseek-v4-flash",
+                "model": "deepseek/deepseek-v4.1-flash",
                 "temperature": 0.7,
                 "timeout": 120,
             }

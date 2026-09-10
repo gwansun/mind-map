@@ -41,6 +41,23 @@ def test_api_key_sends_bearer_header():
     assert "Bearer sk-test" in cmd
 
 
+def test_generated_command_sends_explicit_user_agent():
+    """The one-liner must not rely on the stdlib default User-Agent.
+
+    CommandCode's edge rejects ``Python-urllib/*`` with HTTP 403 / error code
+    1010 before the request reaches the provider. The generated command uses
+    ``urllib.request``, so it must identify itself or the memo path 403s.
+    """
+    t = ce.LocalTarget(
+        model="m",
+        base_url="https://api.commandcode.ai/provider/v1",
+        api_key="sk-test",
+    )
+    cmd = ce.build_cli_template(t)
+    assert "User-Agent" in cmd
+    assert "Python-urllib" not in cmd  # never hardcode the blocked default
+
+
 def test_empty_api_key_sends_no_header():
     t = ce.LocalTarget(model="m", api_key="")
     cmd = ce.build_cli_template(t)

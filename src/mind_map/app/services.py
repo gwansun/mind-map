@@ -111,27 +111,34 @@ def resolve_default_memo_target() -> MemoTarget:
     """Resolve the DEFAULT memo target when no ``local`` flag is passed.
 
     Priority:
-        1. DeepSeek API (``DEEPSEEK_API_KEY``) — default since 2026-08-24.
+        1. CommandCode gateway (``COMMANDCODE_API_KEY``) — default route.
         2. MiniMax API (``MINIMAX_API_KEY``) — legacy fallback.
         3. Neither set: raise ``ValueError``.
 
-    DeepSeek uses the OpenAI-compatible ``LocalTarget`` transport pointed at
-    ``api.deepseek.com/v1`` (same mechanism as ``--local``, validated E2E in
-    commit cf898c5). Model defaults to ``deepseek-chat``, overridable via
-    ``MIND_MAP_DEEPSEEK_MODEL``.
+    DeepSeek rides the OpenAI-compatible ``LocalTarget`` transport (same
+    mechanism as ``--local``), pointed at the CommandCode gateway instead of a
+    provider endpoint. Model defaults to ``deepseek/deepseek-v4.1-flash``;
+    override with ``MIND_MAP_LLM_MODEL`` (legacy ``MIND_MAP_DEEPSEEK_MODEL``
+    still honoured). Both the base URL and model use the same env seam as
+    ``reasoning_llm``, so a future route change is a config edit, not a code
+    edit.
     """
-    deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-    if deepseek_key:
+    commandcode_key = os.getenv("COMMANDCODE_API_KEY")
+    if commandcode_key:
         return LocalTarget(
-            model=os.getenv("MIND_MAP_DEEPSEEK_MODEL") or "deepseek-chat",
-            base_url="https://api.deepseek.com/v1",
-            api_key=deepseek_key,
+            model=os.getenv("MIND_MAP_LLM_MODEL")
+            or os.getenv("MIND_MAP_DEEPSEEK_MODEL")  # legacy alias, pre-CommandCode
+            or "deepseek/deepseek-v4.1-flash",
+            base_url=os.getenv(
+                "MIND_MAP_LLM_BASE_URL", "https://api.commandcode.ai/provider/v1"
+            ),
+            api_key=commandcode_key,
         )
     minimax_key = os.getenv("MINIMAX_API_KEY")
     if minimax_key:
         return MiniMaxTarget(api_key=minimax_key)
     raise ValueError(
-        "No memo API key found. Set DEEPSEEK_API_KEY (default) or "
+        "No memo API key found. Set COMMANDCODE_API_KEY (default) or "
         "MINIMAX_API_KEY, or pass `local` for local mode."
     )
 

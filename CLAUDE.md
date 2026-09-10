@@ -69,10 +69,12 @@ Processing for memo extraction follows this order:
    - any OpenAI-compatible endpoint; base URL defaults to `http://127.0.0.1:11435/v1`
    - override endpoint with `MIND_MAP_LOCAL_BASE_URL` (e.g. DeepSeek `https://api.deepseek.com/v1`)
    - optional auth: `Authorization: Bearer …` sent only when `MIND_MAP_LOCAL_API_KEY` is set
-2. **Default cloud target (no flags)** — priority since 2026-08-24:
-   - **DeepSeek API primary**: when `DEEPSEEK_API_KEY` is set, uses the
-     OpenAI-compatible LocalTarget transport at `https://api.deepseek.com/v1`
-     (model `deepseek-chat`, overridable via `MIND_MAP_DEEPSEEK_MODEL`)
+2. **Default cloud target (no flags)** — route changed 2026-09-10:
+   - **CommandCode gateway primary**: when `COMMANDCODE_API_KEY` is set, uses the
+     OpenAI-compatible LocalTarget transport at
+     `https://api.commandcode.ai/provider/v1` (model
+     `deepseek/deepseek-v4.1-flash`, overridable via `MIND_MAP_LLM_MODEL`;
+     legacy `MIND_MAP_DEEPSEEK_MODEL` still honoured)
    - **MiniMax API fallback**: `MINIMAX_API_KEY` + `MiniMaxTarget`
      (`api.minimax.io`, model `MiniMax-M2.5`) — legacy path, kept working
 3. **Configured processing LLM fallback**
@@ -107,7 +109,7 @@ Recent extraction prompt changes:
 | Processing (general LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
 | Memo extraction primary | MiniMax API (direct) | minimax | Retrieval-grounded memo ingestion |
 | Memo extraction fallback | Ollama / configured processing model | phi3.5 | Structured extraction fallback |
-| Reasoning (LLM-A) | DeepSeek API (direct) / fallbacks | deepseek-v4-flash | Response generation |
+| Reasoning (LLM-A) | CommandCode gateway / fallbacks | deepseek/deepseek-v4.1-flash | Response generation |
 
 - **Processing (general LLM-B)**: Cloud-first with validated fallback to Ollama
   - Provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
@@ -117,9 +119,10 @@ Recent extraction prompt changes:
   - Config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
   - Auto-pull (Ollama): disabled by default
 
-- **Reasoning (LLM-A)**: DeepSeek API (default) with fallbacks
-  - Priority: DeepSeek API → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
-  - Default: `deepseek` (`deepseek-v4-flash`; override via `MIND_MAP_DEEPSEEK_MODEL`)
+- **Reasoning (LLM-A)**: DeepSeek family via the CommandCode gateway (default) with fallbacks
+  - Priority: CommandCode gateway → Claude CLI → Gemini → Anthropic Claude → OpenAI GPT
+  - Default: `deepseek` (`deepseek/deepseek-v4.1-flash`; override via `MIND_MAP_LLM_MODEL`)
+  - Transport is `requests`; the gateway edge accepts its default UA
 
 **Importance Score**: `S = (C_node / C_max) * e^(-λ * Δt)`
 - `C_node` and `C_max` are both counted bidirectionally (source OR target)

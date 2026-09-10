@@ -345,24 +345,34 @@ def get_minimax_llm(model: str = "MiniMax-M2.5", timeout: int = 120) -> Any:
 
 
 class DeepSeekChatLLM(BaseChatModel):
-    """LangChain-compatible wrapper for direct DeepSeek API calls.
+    """LangChain-compatible wrapper for DeepSeek response generation.
 
-    Uses POST to https://api.deepseek.com/v1/chat/completions with the
-    deepseek-v4-flash model (OpenAI-compatible transport). Mirrors MiniMaxChatLLM.
+    Transport is the CommandCode gateway (OpenAI-compatible): POST to
+    ``{base_url}/chat/completions`` with a ``deepseek/``-namespaced model id.
+    Mirrors MiniMaxChatLLM. Class and function names retain "deepseek" because
+    they denote the DeepSeek model *family*; the route is CommandCode.
+
+    No explicit ``User-Agent`` is needed on this transport: ``requests`` sends
+    ``python-requests/x.y``, which the gateway edge accepts. (Its Cloudflare
+    rule rejects the stdlib ``urllib`` UA — a different transport.)
     """
 
     model: str = Field(
-        default_factory=lambda: os.getenv("MIND_MAP_DEEPSEEK_MODEL", "deepseek-v4-flash"),
-        description="DeepSeek model name (override via MIND_MAP_DEEPSEEK_MODEL)",
+        default_factory=lambda: os.getenv("MIND_MAP_LLM_MODEL")
+        or os.getenv("MIND_MAP_DEEPSEEK_MODEL")  # legacy alias, pre-CommandCode
+        or "deepseek/deepseek-v4.1-flash",
+        description="Model id (override via MIND_MAP_LLM_MODEL)",
     )
     timeout: int = Field(default=120, description="Timeout in seconds for API calls")
     api_key: str = Field(
-        default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""),
-        description="DeepSeek API key (from DEEPSEEK_API_KEY env var)",
+        default_factory=lambda: os.getenv("COMMANDCODE_API_KEY", ""),
+        description="CommandCode API key (from COMMANDCODE_API_KEY env var)",
     )
     base_url: str = Field(
-        default="https://api.deepseek.com/v1",
-        description="DeepSeek API base URL",
+        default_factory=lambda: os.getenv(
+            "MIND_MAP_LLM_BASE_URL", "https://api.commandcode.ai/provider/v1"
+        ),
+        description="CommandCode gateway base URL",
     )
     max_tokens: int = Field(default=8192, description="Maximum completion tokens")
 
@@ -380,7 +390,7 @@ class DeepSeekChatLLM(BaseChatModel):
         """Generate response via direct DeepSeek API call."""
         if not self.api_key:
             raise RuntimeError(
-                "DEEPSEEK_API_KEY not set. Set it in your environment or .env file."
+                "COMMANDCODE_API_KEY not set. Set it in your environment or .env file."
             )
 
         try:
@@ -417,18 +427,18 @@ class DeepSeekChatLLM(BaseChatModel):
             )
             resp.raise_for_status()
         except requests.Timeout as e:
-            raise RuntimeError(f"DeepSeek API timed out after {self.timeout}s") from e
+            raise RuntimeError(f"CommandCode request timed out after {self.timeout}s") from e
         except requests.RequestException as e:
-            raise RuntimeError(f"DeepSeek API request failed: {e}") from e
+            raise RuntimeError(f"CommandCode request failed: {e}") from e
 
         body = resp.json()
         choices = body.get("choices", [])
         if not choices:
-            raise RuntimeError(f"DeepSeek API returned no choices: {body}")
+            raise RuntimeError(f"CommandCode returned no choices: {body}")
 
         response_text = choices[0].get("message", {}).get("content", "")
         if not response_text:
-            raise RuntimeError("DeepSeek API returned empty content")
+            raise RuntimeError("CommandCode returned empty content")
 
         return ChatResult(
             generations=[
@@ -438,8 +448,11 @@ class DeepSeekChatLLM(BaseChatModel):
 
 
 def check_deepseek_available() -> bool:
-    """Check if DeepSeek API key is configured."""
-    return bool(os.getenv("DEEPSEEK_API_KEY"))
+    """Check whether the CommandCode credential is configured.
+
+    Name retained: it gates the DeepSeek *family* reasoning provider.
+    """
+    return bool(os.getenv("COMMANDCODE_API_KEY"))
 
 
 def get_deepseek_llm(
@@ -450,10 +463,10 @@ def get_deepseek_llm(
     Returns DeepSeekChatLLM instance or None if API key not configured.
     """
     if not check_deepseek_available():
-        console.print("[yellow]DEEPSEEK_API_KEY not set. Cannot use DeepSeek API.[/yellow]")
+        console.print("[yellow]COMMANDCODE_API_KEY not set. Cannot use DeepSeek API.[/yellow]")
         return None
 
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    api_key = os.getenv("COMMANDCODE_API_KEY", "")
     llm = DeepSeekChatLLM(
         timeout=timeout,
         api_key=api_key,
@@ -622,7 +635,7 @@ def get_reasoning_llm() -> Any:
 
     # Fallback chain: DeepSeek → Claude CLI → Gemini → Anthropic → OpenAI
     if provider != "deepseek" and check_deepseek_available():
-        llm = get_deepseek_llm("deepseek-v4-flash", timeout)
+        llm = get_deepseek_llm("deepseek/deepseek-v4.1-flash", timeout)
         if llm:
             console.print("[dim]Using DeepSeek API as fallback[/dim]")
             return llm

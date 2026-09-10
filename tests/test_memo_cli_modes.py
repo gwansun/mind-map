@@ -26,7 +26,7 @@ class TestMemoCliModes:
             with patch.dict(os.environ, {}, clear=True):
                 result = runner.invoke(app, ["memo", "hello world", "--data-dir", tmpdir])
                 assert result.exit_code == 1
-                assert "DEEPSEEK_API_KEY" in result.stdout
+                assert "COMMANDCODE_API_KEY" in result.stdout
 
     def test_rejects_openclaw_option(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

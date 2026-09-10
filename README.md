@@ -62,15 +62,15 @@ Supported modes:
 2. **Local path** — `mind-map memo "..." --local [model]`
 
 Rules:
-- Exactly one of DeepSeek API (implicit via env, default) / MiniMax API (legacy fallback via env) or `--local` must provide a model target
-- If none of `DEEPSEEK_API_KEY`, `MINIMAX_API_KEY`, nor `--local` is provided, memo CLI ingestion fails early
+- Exactly one of the CommandCode gateway (implicit via env, default) / MiniMax API (legacy fallback via env) or `--local` must provide a model target
+- If none of `COMMANDCODE_API_KEY`, `MINIMAX_API_KEY`, nor `--local` is provided, memo CLI ingestion fails early
 - If the selected path fails, memo CLI ingestion rejects with no fallback
 - Internal non-CLI ingestion paths still use a separate internal ingestion flow
 
 Current defaults:
-- **Default (since 2026-08-24):** `DEEPSEEK_API_KEY` set → OpenAI-compatible LocalTarget transport at `https://api.deepseek.com/v1`, model `deepseek-chat` (override with `MIND_MAP_DEEPSEEK_MODEL`)
+- **Default:** `COMMANDCODE_API_KEY` set → OpenAI-compatible LocalTarget transport at `https://api.commandcode.ai/provider/v1`, model `deepseek/deepseek-v4.1-flash` (override with `MIND_MAP_LLM_MODEL`)
 - **Legacy fallback:** MiniMax API uses the endpoint at `api.minimax.io` via the `minimax` Python module (`MINIMAX_API_KEY`)
-- `--local` uses `http://127.0.0.1:11435/v1`; override with `MIND_MAP_LOCAL_BASE_URL` (any OpenAI-compatible endpoint, e.g. DeepSeek `https://api.deepseek.com/v1`)
+- `--local` uses `http://127.0.0.1:11435/v1`; override with `MIND_MAP_LOCAL_BASE_URL` (any OpenAI-compatible endpoint)
 - optional auth: `Authorization: Bearer …` header sent only when `MIND_MAP_LOCAL_API_KEY` is set
 - `--local` without a model value resolves the first model returned by `/v1/models`
 

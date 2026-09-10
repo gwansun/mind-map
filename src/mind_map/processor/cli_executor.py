@@ -108,22 +108,34 @@ def resolve_local_model(*, model: str | None = None, base_url: str = _DEFAULT_LO
     return first["id"].strip()
 
 
+# The stdlib default User-Agent (``Python-urllib/x.y``) is rejected by the
+# CommandCode edge with HTTP 403 / Cloudflare error code 1010 *before* the
+# request reaches the provider. That surfaces as an auth failure rather than a
+# transport rejection, so the generated command must identify itself.
+_LOCAL_USER_AGENT = "mind-map/1.0"
+
+
 def _local_headers_literal(api_key: str | None) -> str:
     """Headers dict literal for the local one-liner, computed at build time.
+
+    Always sends an explicit ``User-Agent`` (see ``_LOCAL_USER_AGENT``); a local
+    OpenAI-compatible server simply ignores the header.
 
     No key → plain JSON content type only (localhost servers need no auth).
     Key set → Bearer token embedded, mirroring the MiniMax target convention.
     """
+    common = f"'Content-Type': 'application/json', 'User-Agent': {_LOCAL_USER_AGENT!r}"
     if api_key:
-        return f"{{'Content-Type': 'application/json', 'Authorization': 'Bearer {api_key}'}}"
-    return "{'Content-Type': 'application/json'}"
+        return "{" + common + f", 'Authorization': 'Bearer {api_key}'" + "}"
+    return "{" + common + "}"
 
 
 def build_local_command(target: LocalTarget) -> str:
-    """Build a local OpenAI-compatible CLI command template using curl.
+    """Build a local OpenAI-compatible CLI command template.
 
-    The prompt will be appended as the last argument and injected into the JSON
-    payload under messages[0].content.
+    Emits a ``python3 -c`` one-liner using ``urllib.request`` (not curl, despite
+    the historical name). The prompt is appended as the last argument and
+    injected into the JSON payload under messages[0].content.
     """
     return (
         "python3 -c "
