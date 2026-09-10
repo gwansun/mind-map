@@ -66,8 +66,7 @@ mind-map/
 ├── config.yaml                        # Configuration file
 ├── pyproject.toml                     # Poetry project definition
 ├── README.md                          # Primary user-facing project README
-├── README-PROJECT.md                  # Extended project documentation
-└── CLAUDE.md                          # Developer and architecture reference
+└── README-PROJECT.md                  # Extended project documentation
 ```
 
 ---
