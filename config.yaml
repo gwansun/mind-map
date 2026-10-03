@@ -8,9 +8,9 @@ importance:
   lambda_decay: 0.05
   time_unit: days
 processing_llm:
-  provider: ollama          # auto | gemini | anthropic | openai | ollama
+  provider: commandcode     # commandcode | auto | gemini | anthropic | openai | ollama
   auto_pull: false
-  model: phi3.5           # Ollama model (used when provider is ollama or auto-fallback)
+  model: deepseek/deepseek-v4.1-flash   # CommandCode gateway model id (COMMANDCODE_API_KEY)
   temperature: 0.1
 reasoning_llm:
   provider: deepseek            # Options: deepseek, minimax-direct, claude-cli, gemini, anthropic, openai

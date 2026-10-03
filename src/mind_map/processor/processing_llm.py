@@ -571,7 +571,8 @@ def _try_cloud_processing_llm(
     is active and has sufficient credits before returning.
 
     Args:
-        provider: "auto" tries all in order, or specify "gemini"/"anthropic"/"openai"
+        provider: "auto" tries all in order, or specify
+            "commandcode"/"gemini"/"anthropic"/"openai"
         temperature: Temperature for generation (low for processing tasks)
 
     Returns:
@@ -580,13 +581,35 @@ def _try_cloud_processing_llm(
     providers_to_try: list[str] = []
     if provider == "auto":
         providers_to_try = ["gemini", "anthropic", "openai"]
-    elif provider in ("gemini", "anthropic", "openai"):
+    elif provider in ("commandcode", "gemini", "anthropic", "openai"):
         providers_to_try = [provider]
     else:
         return None, None
 
     for p in providers_to_try:
-        if p == "gemini":
+        if p == "commandcode":
+            # CommandCode gateway route (DeepSeek family) — the same transport the
+            # reasoning side uses. DeepSeekChatLLM takes no temperature field, so the
+            # processing_llm.temperature setting does not apply on this route.
+            if not os.getenv("COMMANDCODE_API_KEY"):
+                continue
+            try:
+                from mind_map.rag.reasoning_llm import get_deepseek_llm
+
+                commandcode_llm = get_deepseek_llm()
+                if commandcode_llm is not None and _validate_cloud_llm(
+                    commandcode_llm, "CommandCode"
+                ):
+                    return commandcode_llm, "commandcode"
+                continue
+            except ImportError:
+                console.print("[dim]reasoning_llm unavailable, skipping CommandCode[/dim]")
+                continue
+            except Exception as e:
+                console.print(f"[dim]CommandCode init failed: {e}[/dim]")
+                continue
+
+        elif p == "gemini":
             api_key = os.getenv("GOOGLE_API_KEY")
             if not api_key:
                 continue
@@ -718,6 +741,14 @@ def detect_processing_provider() -> tuple[str, str]:
     if provider == "ollama":
         model = processing_config.get("model", DEFAULT_PROCESSING_MODEL)
         return "ollama", model
+
+    if provider == "commandcode":
+        # Deliberately NOT part of the "auto" chain: auto keeps its documented
+        # gemini → anthropic → openai → ollama order. Reported even without a key,
+        # mirroring the other explicit-cloud-provider branches below.
+        return "commandcode", processing_config.get(
+            "model", "deepseek/deepseek-v4.1-flash"
+        )
 
     # For auto or specific cloud provider, check what's available
     if provider in ("auto", "gemini"):

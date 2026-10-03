@@ -786,3 +786,114 @@ class TestEnrichmentEndToEnd:
 
         assert len(enriched) == original_count
         assert enriched_ids == original_ids
+
+
+# ============== CommandCode processing provider (LLM-B via gateway route) ==============
+
+
+class TestCommandCodeProcessingProvider:
+    """provider=commandcode routes LLM-B through the CommandCode gateway.
+
+    Regression guard for replacing the Ollama-only processing leg (Ollama is not
+    installed on this host) with the credential-backed CommandCode route that the
+    reasoning side already uses. Deliberately NOT part of the "auto" chain.
+    """
+
+    def test_try_cloud_returns_commandcode_when_key_present(self):
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
+
+        mock_llm = MagicMock()
+        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "test-key"}):
+            with patch(
+                "mind_map.processor.processing_llm._validate_cloud_llm",
+                return_value=True,
+            ):
+                with patch(
+                    "mind_map.rag.reasoning_llm.get_deepseek_llm",
+                    return_value=mock_llm,
+                ):
+                    llm, provider = _try_cloud_processing_llm("commandcode")
+        assert provider == "commandcode"
+        assert llm is mock_llm
+
+    def test_try_cloud_returns_none_without_key(self):
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
+
+        saved = os.environ.pop("COMMANDCODE_API_KEY", None)
+        try:
+            llm, provider = _try_cloud_processing_llm("commandcode")
+        finally:
+            if saved is not None:
+                os.environ["COMMANDCODE_API_KEY"] = saved
+        assert llm is None
+        assert provider is None
+
+    def test_auto_order_unchanged_by_commandcode(self):
+        """auto must not preempt gemini/anthropic/openai with the CommandCode route."""
+        from mind_map.processor.processing_llm import _try_cloud_processing_llm
+
+        mock_gemini = MagicMock()
+        with patch.dict(
+            os.environ, {"GOOGLE_API_KEY": "gkey", "COMMANDCODE_API_KEY": "cckey"}
+        ):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "langchain_google_genai": MagicMock(
+                        ChatGoogleGenerativeAI=MagicMock(return_value=mock_gemini)
+                    )
+                },
+            ):
+                llm, provider = _try_cloud_processing_llm("auto")
+        assert provider == "gemini"
+        assert llm is mock_gemini
+
+    def test_detect_reports_commandcode(self):
+        from mind_map.processor.processing_llm import detect_processing_provider
+
+        config = {
+            "processing_llm": {
+                "provider": "commandcode",
+                "model": "deepseek/deepseek-v4.1-flash",
+            }
+        }
+        with patch(LOAD_CONFIG_PATCH, return_value=config):
+            provider, model = detect_processing_provider()
+        assert provider == "commandcode"
+        assert model == "deepseek/deepseek-v4.1-flash"
+
+    def test_status_online_when_credential_present(self):
+        from mind_map.rag.llm_status import get_llm_status
+
+        config = {
+            "processing_llm": {
+                "provider": "commandcode",
+                "model": "deepseek/deepseek-v4.1-flash",
+            },
+            "reasoning_llm": {"provider": "deepseek"},
+        }
+        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}):
+            # llm_status binds load_config at module import; patch that binding.
+            with patch("mind_map.rag.llm_status.load_config", return_value=config):
+                status = get_llm_status()
+        assert status["processing_llm"]["provider"] == "commandcode"
+        assert status["processing_llm"]["status"] == "online"
+
+    def test_status_offline_without_credential(self):
+        from mind_map.rag.llm_status import get_llm_status
+
+        config = {
+            "processing_llm": {
+                "provider": "commandcode",
+                "model": "deepseek/deepseek-v4.1-flash",
+            },
+            "reasoning_llm": {"provider": "deepseek"},
+        }
+        saved = os.environ.pop("COMMANDCODE_API_KEY", None)
+        try:
+            with patch("mind_map.rag.llm_status.load_config", return_value=config):
+                status = get_llm_status()
+        finally:
+            if saved is not None:
+                os.environ["COMMANDCODE_API_KEY"] = saved
+        assert status["processing_llm"]["status"] == "offline"

@@ -25,6 +25,9 @@ def get_llm_status() -> dict[str, Any]:
     proc_provider, proc_model = detect_processing_provider()
     if proc_provider == "ollama":
         processing_available = check_ollama_available()
+    elif proc_provider == "commandcode":
+        # CommandCode route (DeepSeek family) — same credential the reasoning side uses.
+        processing_available = check_deepseek_available()
     elif proc_provider == "gemini":
         processing_available = check_gemini_available()
     elif proc_provider == "anthropic":
