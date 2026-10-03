@@ -103,7 +103,8 @@ these tests still pass without modification.
 3. **`test_mcp_health.py`** — locks MCP `mind_map_health` contract:
    - JSON output with keys: `status`, `checks`, `timestamp`, `workspace`
    - `status` ∈ `{"healthy", "degraded", "unhealthy"}`
-   - `checks` contains: `ollama_connection`, `chromadb_connection`, `sqlite_connection`, `processing_llm`, `integration_tests`
+   - `checks` contains: `chromadb_connection`, `sqlite_connection`, `processing_llm`, `integration_tests`
+   - the `ollama_connection` probe was removed (2026-10-03): no configured provider uses Ollama
    - `integration_tests` contains: `similarity_search`, `memo_ingestion`, `data_persistence`
    - Integration tests MUST clean up after themselves (node count unchanged)
    - `mind_map.mcp.server.DEFAULT_DATA_DIR` is patchable (test mocks it)

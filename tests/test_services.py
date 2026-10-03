@@ -563,7 +563,7 @@ class TestHealthCheck:
         ):
             result = services.health_check(temp_store, workspace_id="default")
         checks = result["checks"]
-        assert "ollama_connection" in checks
+        assert "ollama_connection" not in checks  # probe removed by design
         assert "chromadb_connection" in checks
         assert "sqlite_connection" in checks
         assert "processing_llm" in checks

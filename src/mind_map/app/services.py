@@ -630,7 +630,7 @@ def health_check(
     """Run a comprehensive health check on the Mind Map system.
 
     Returns the full health-check dict matching the MCP ``mind_map_health``
-    JSON contract. Lazy-imports Ollama/LLM modules to avoid pulling them
+    JSON contract. Lazy-imports LLM modules to avoid pulling them
     when not needed.
 
     When ``store_getter`` is provided, sections that need the store will call
@@ -644,14 +644,9 @@ def health_check(
     tests patching ``mind_map.mcp.server.ingest_memo`` continue to work after
     the MCP server delegates here.
     """
-    # Lazy imports: health checks should not force Ollama/LLM deps at import
+    # Lazy imports: health checks should not force LLM deps at import
     import time as _time
 
-    from mind_map.processor.processing_llm import (
-        check_ollama_available,
-        get_available_models,
-        get_selected_model,
-    )
     from mind_map.rag.llm_status import get_llm_status
 
     def _resolve_store() -> GraphStore | None:
@@ -669,35 +664,7 @@ def health_check(
 
     checks: dict[str, Any] = {}
 
-    # 1. Ollama connection
-    try:
-        ollama_up = check_ollama_available()
-        if ollama_up:
-            model = get_selected_model()
-            available = get_available_models()
-            model_found = model in available
-            checks["ollama_connection"] = {
-                "status": "pass" if model_found else "fail",
-                "model": model,
-                "details": (
-                    "Model available" if model_found
-                    else f"Model '{model}' not found in {available}"
-                ),
-            }
-        else:
-            checks["ollama_connection"] = {
-                "status": "fail",
-                "model": None,
-                "details": "Ollama server not running",
-            }
-    except Exception as e:
-        checks["ollama_connection"] = {
-            "status": "fail",
-            "model": None,
-            "details": str(e),
-        }
-
-    # 2. ChromaDB connection
+    # 1. ChromaDB connection
     chroma_store: GraphStore | None = None
     try:
         chroma_store = _resolve_store()
@@ -729,7 +696,7 @@ def health_check(
                     "details": str(e),
                 }
 
-    # 3. SQLite connection
+    # 2. SQLite connection
     sqlite_store: GraphStore | None = None
     try:
         sqlite_store = _resolve_store()
@@ -761,7 +728,7 @@ def health_check(
                     "edge_count": 0,
                     "details": str(e),
                 }
-    # 4. Processing LLM status
+    # 3. Processing LLM status
     try:
         llm_status = get_llm_status()
         proc = llm_status.get("processing_llm", {})
@@ -799,7 +766,7 @@ def health_check(
         }
         integration["data_persistence"] = {"status": "fail", "details": msg}
     else:
-        # 5. Similarity search
+        # 4. Similarity search
         test_id = f"_health_check_{uuid.uuid4().hex[:12]}"
         try:
             int_store.add_node(test_id, "health check similarity test node", NodeType.CONCEPT)
@@ -823,9 +790,17 @@ def health_check(
                 "details": str(e),
             }
 
-        # 6. Memo ingestion (heuristic only, no LLM cost)
+        # 5. Memo ingestion (heuristic only, no LLM cost)
+        # NOTE: the text MUST be unique per run. The heuristic filter dedupes on an
+        # exact normalized-text match (see filter_agent/pipeline: "Matches existing
+        # concept"), so a constant string makes this check fail permanently on any
+        # graph that already holds it. The other two integration checks below
+        # already use uuid-suffixed text for the same reason.
         try:
-            test_text = "Health check memo ingestion test for Python programming concepts"
+            test_text = (
+                "Health check memo ingestion test for Python programming concepts "
+                f"{uuid.uuid4().hex[:12]}"
+            )
             success, message, node_ids = ingest_memo(
                 text=test_text, store=int_store, llm=None
             )
@@ -844,7 +819,7 @@ def health_check(
                 "details": str(e),
             }
 
-        # 7. Data persistence
+        # 6. Data persistence
         n1 = f"_health_check_{uuid.uuid4().hex[:12]}"
         n2 = f"_health_check_{uuid.uuid4().hex[:12]}"
         try:
@@ -895,9 +870,8 @@ def health_check(
     )
     integration_ok = all(t.get("status") == "pass" for t in integration.values())
     llm_ok = checks.get("processing_llm", {}).get("status") == "available"
-    ollama_ok = checks.get("ollama_connection", {}).get("status") == "pass"
 
-    if db_ok and integration_ok and llm_ok and ollama_ok:
+    if db_ok and integration_ok and llm_ok:
         status = "healthy"
     elif db_ok and integration_ok:
         status = "degraded"
