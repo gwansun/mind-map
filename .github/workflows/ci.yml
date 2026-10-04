@@ -1,0 +1,43 @@
+name: CI
+
+# Keeps the zero-finding baseline: ruff lint + formatting, strict mypy, and the
+# test suite. Dependencies come from poetry.lock (the project's lockfile); uv is
+# deliberately not used here, and uv.lock was removed from the repo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: ruff, mypy, pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install poetry
+        run: pipx install "poetry>=2,<3"
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: ruff (lint)
+        run: poetry run ruff check .
+
+      - name: ruff (format check)
+        run: poetry run ruff format --check .
+
+      - name: mypy (strict)
+        run: poetry run mypy src
+
+      - name: pytest
+        run: poetry run pytest -q
