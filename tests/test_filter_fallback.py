@@ -261,9 +261,7 @@ class TestLegacyExtractionWithLlm:
             }
         )
 
-        success, _message, node_ids = ingest_memo_internal(
-            self.SUBSTANTIVE, temp_store, llm=llm
-        )
+        success, _message, node_ids = ingest_memo_internal(self.SUBSTANTIVE, temp_store, llm=llm)
 
         assert success is True
         assert llm.calls == 1
@@ -315,9 +313,7 @@ class TestLegacyExtractionWithLlm:
                 return AIMessage(content="Sure! Here is the JSON you asked for: ...")
 
         llm = _ProseLlm()
-        success, _message, node_ids = ingest_memo_internal(
-            self.SUBSTANTIVE, temp_store, llm=llm
-        )
+        success, _message, node_ids = ingest_memo_internal(self.SUBSTANTIVE, temp_store, llm=llm)
 
         assert success is True
         assert llm.calls == 1

@@ -4,6 +4,7 @@ Supports explicit memo target execution for structured extraction.
 The CLI must resolve the model path earlier and pass it in.
 If the given target fails, extraction throws and the memo is rejected.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,8 +19,7 @@ from mind_map.processor.cli_executor import MemoTarget, build_cli_template
 
 logger = __import__("logging").getLogger(__name__)
 
-_REFERENCE_CONTEXT_TEMPLATE = (
-    """EXTRACT JSON from the NEW text below. Respond with ONLY raw JSON. No text before or after.
+_REFERENCE_CONTEXT_TEMPLATE = """EXTRACT JSON from the NEW text below. Respond with ONLY raw JSON. No text before or after.
 
 NEW TEXT:
 {text}
@@ -29,7 +29,6 @@ REFERENCE ENTITIES/TAGS (optional grounding hints only, not facts to copy):
 
 Required keys: summary, tags, entities, relationships
 Extract only what is supported by NEW TEXT."""
-)
 
 
 def _build_reference_context(reference_nodes: list[GraphNode]) -> str:
@@ -52,9 +51,7 @@ def _parse_json_object(message: Any) -> dict[str, Any]:
     """
     content = getattr(message, "content", message)
     if isinstance(content, list):
-        content = "".join(
-            part.get("text", "") for part in content if isinstance(part, dict)
-        )
+        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
     text = str(content).strip()
     if text.startswith("```"):
         text = re.sub(r"^```[A-Za-z]*\s*|\s*```$", "", text).strip()
@@ -164,4 +161,3 @@ class KnowledgeProcessor:
             _parse_json_object(self._llm.invoke(messages)),
             fallback_text=text,
         )
-

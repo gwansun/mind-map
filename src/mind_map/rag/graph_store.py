@@ -54,12 +54,8 @@ class GraphStore:
                 UNIQUE(source, target, relation_type)
             )
         """)
-        self._sqlite_conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source)"
-        )
-        self._sqlite_conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target)"
-        )
+        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source)")
+        self._sqlite_conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target)")
         self._sqlite_conn.commit()
 
     def _serialize_metadata(self, metadata: NodeMetadata) -> dict[str, str | int | float | bool]:
@@ -171,7 +167,11 @@ class GraphStore:
 
         return GraphNode(
             id=result["ids"][0],
-            document=(result["documents"][0] if result.get("documents") and result["documents"][0] is not None else ""),
+            document=(
+                result["documents"][0]
+                if result.get("documents") and result["documents"][0] is not None
+                else ""
+            ),
             metadata=metadata,
             embedding=embedding,
         )
@@ -211,9 +211,7 @@ class GraphStore:
                 neighbors.append(node)
         return neighbors
 
-    def get_connected_context(
-        self, node_ids: list[str]
-    ) -> dict[str, list[tuple[GraphNode, Edge]]]:
+    def get_connected_context(self, node_ids: list[str]) -> dict[str, list[tuple[GraphNode, Edge]]]:
         """Get direct neighbors for each node in node_ids."""
         if not node_ids:
             return {}
@@ -293,7 +291,11 @@ class GraphStore:
             if distance > max_distance:
                 continue
 
-            metadata_dict = results["metadatas"][0][i] if results.get("metadatas") and results["metadatas"][0] else None
+            metadata_dict = (
+                results["metadatas"][0][i]
+                if results.get("metadatas") and results["metadatas"][0]
+                else None
+            )
             metadata = (
                 NodeMetadata(**metadata_dict)
                 if metadata_dict
@@ -303,16 +305,18 @@ class GraphStore:
 
             node = GraphNode(
                 id=node_id,
-                document=(results["documents"][0][i] if results.get("documents") and results["documents"][0][i] is not None else ""),
+                document=(
+                    results["documents"][0][i]
+                    if results.get("documents") and results["documents"][0][i] is not None
+                    else ""
+                ),
                 metadata=metadata,
             )
             nodes.append(node)
 
         return nodes
 
-    def get_relation_factors(
-        self, anchor_id: str, candidate_ids: list[str]
-    ) -> dict[str, float]:
+    def get_relation_factors(self, anchor_id: str, candidate_ids: list[str]) -> dict[str, float]:
         """Calculate relation factor for each candidate relative to an anchor node."""
         if not candidate_ids:
             return {}
@@ -404,7 +408,9 @@ class GraphStore:
         """Delete a node and, for concept deletes, its first-layer tag neighbors."""
         node = self.get_node(node_id)
         if node is None:
-            return DeleteNodeResult(deleted_node_id=node_id, deleted_tag_ids=[], deleted_edges_count=0)
+            return DeleteNodeResult(
+                deleted_node_id=node_id, deleted_tag_ids=[], deleted_edges_count=0
+            )
 
         deleted_tag_ids: list[str] = []
         nodes_to_delete: list[str] = [node_id]

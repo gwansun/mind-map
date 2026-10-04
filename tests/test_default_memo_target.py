@@ -8,6 +8,7 @@ as of the 2026-09-10 route change points at the CommandCode gateway instead of
 api.deepseek.com. The `deepseek` naming is retained because it denotes the
 model family, not the endpoint.
 """
+
 import pytest
 
 from mind_map.app.services import resolve_default_memo_target

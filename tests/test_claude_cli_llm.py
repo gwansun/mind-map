@@ -104,11 +104,15 @@ class TestClaudeCLILLM:
         mock_result.returncode = 0
         mock_result.stdout = "Response"
 
-        with patch("mind_map.rag.reasoning_llm.subprocess.run", return_value=mock_result) as mock_run:
-            llm._generate([
-                SystemMessage(content="You are helpful"),
-                HumanMessage(content="Hi"),
-            ])
+        with patch(
+            "mind_map.rag.reasoning_llm.subprocess.run", return_value=mock_result
+        ) as mock_run:
+            llm._generate(
+                [
+                    SystemMessage(content="You are helpful"),
+                    HumanMessage(content="Hi"),
+                ]
+            )
             # Check that the prompt was formatted correctly
             call_args = mock_run.call_args
             input_text = call_args.kwargs.get("input", "")

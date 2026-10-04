@@ -7,8 +7,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from mind_map.core.schemas import GraphNode
 
 # Prompt for when we have context from the knowledge graph
-RESPONSE_WITH_CONTEXT_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are an intelligent assistant with access to a knowledge graph.
+RESPONSE_WITH_CONTEXT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are an intelligent assistant with access to a knowledge graph.
 Use the provided context to answer the user's question accurately and helpfully.
 
 Context from knowledge graph:
@@ -18,13 +21,18 @@ Guidelines:
 - Base your answer primarily on the provided context
 - You may supplement with your general knowledge if the context is incomplete
 - Be concise but thorough
-- Reference specific pieces of context when relevant"""),
-    ("human", "{query}"),
-])
+- Reference specific pieces of context when relevant""",
+        ),
+        ("human", "{query}"),
+    ]
+)
 
 # Prompt for when we have no context (new topic for the knowledge graph)
-RESPONSE_NO_CONTEXT_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are an intelligent assistant helping to build a knowledge graph.
+RESPONSE_NO_CONTEXT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are an intelligent assistant helping to build a knowledge graph.
 The user is asking about a topic that is new to the knowledge graph.
 
 Answer the user's question using your knowledge. Your response will be processed
@@ -33,9 +41,11 @@ and added to the knowledge graph for future reference.
 Guidelines:
 - Provide a helpful, accurate answer
 - Be concise but thorough
-- Structure your response clearly"""),
-    ("human", "{query}"),
-])
+- Structure your response clearly""",
+        ),
+        ("human", "{query}"),
+    ]
+)
 
 
 class ResponseGenerator:

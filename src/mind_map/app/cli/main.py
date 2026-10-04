@@ -37,11 +37,13 @@ app.add_typer(model_app, name="model")
 def show_help() -> None:
     """Show comprehensive help with all commands and options."""
     console.print()
-    console.print(Panel.fit(
-        "[bold cyan]Mind Map CLI[/bold cyan]\n"
-        "[dim]Knowledge Graph-based Mind Map with intelligent context management[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Mind Map CLI[/bold cyan]\n"
+            "[dim]Knowledge Graph-based Mind Map with intelligent context management[/dim]",
+            border_style="cyan",
+        )
+    )
 
     # Main Commands
     console.print("\n[bold yellow]MAIN COMMANDS[/bold yellow]\n")
@@ -72,7 +74,11 @@ def show_help() -> None:
     init_table.add_column("Short", style="dim", width=8)
     init_table.add_column("Description")
 
-    init_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
+    init_table.add_row(
+        "--data-dir PATH",
+        "-d",
+        "Directory for database storage [default: /Users/gwansun/mind-map/data]",
+    )
     init_table.add_row("--with-ollama", "-o", "Also initialize Ollama with selected model")
     console.print(init_table)
 
@@ -85,8 +91,16 @@ def show_help() -> None:
 
     memo_table.add_row("TEXT", "", "Text to ingest (required argument)")
     memo_table.add_row("--source TEXT", "-s", "Source identifier for the note")
-    memo_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
-    memo_table.add_row("--local [MODEL]", "", 'Required memo mode. Uses explicit local OpenAI-compatible path at http://127.0.0.1:11435/v1')
+    memo_table.add_row(
+        "--data-dir PATH",
+        "-d",
+        "Directory for database storage [default: /Users/gwansun/mind-map/data]",
+    )
+    memo_table.add_row(
+        "--local [MODEL]",
+        "",
+        "Required memo mode. Uses explicit local OpenAI-compatible path at http://127.0.0.1:11435/v1",
+    )
     console.print(memo_table)
 
     # Ask Command Options
@@ -98,7 +112,11 @@ def show_help() -> None:
 
     ask_table.add_row("QUERY", "", "Question to ask (required argument)")
     ask_table.add_row("--depth INT", "-d", "Graph traversal depth [default: 2]")
-    ask_table.add_row("--data-dir PATH", "", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
+    ask_table.add_row(
+        "--data-dir PATH",
+        "",
+        "Directory for database storage [default: /Users/gwansun/mind-map/data]",
+    )
     ask_table.add_row("--model TEXT", "-m", "Specific processing model to use")
     console.print(ask_table)
 
@@ -109,7 +127,11 @@ def show_help() -> None:
     stats_table.add_column("Short", style="dim", width=8)
     stats_table.add_column("Description")
 
-    stats_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
+    stats_table.add_row(
+        "--data-dir PATH",
+        "-d",
+        "Directory for database storage [default: /Users/gwansun/mind-map/data]",
+    )
     console.print(stats_table)
 
     # Serve Command Options
@@ -119,7 +141,11 @@ def show_help() -> None:
     serve_table.add_column("Short", style="dim", width=8)
     serve_table.add_column("Description")
 
-    serve_table.add_row("--data-dir PATH", "-d", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
+    serve_table.add_row(
+        "--data-dir PATH",
+        "-d",
+        "Directory for database storage [default: /Users/gwansun/mind-map/data]",
+    )
     serve_table.add_row("--host TEXT", "-h", "Host to bind to [default: 127.0.0.1]")
     serve_table.add_row("--port INT", "-p", "Port to bind to [default: 8000]")
     console.print(serve_table)
@@ -145,9 +171,19 @@ def show_help() -> None:
 
     retrieve_table.add_row("QUERY", "", "Text to search for (required argument)")
     retrieve_table.add_row("--n-results INT", "-n", "Number of results to return [default: 5]")
-    retrieve_table.add_row("--data-dir PATH", "", "Directory for database storage [default: /Users/gwansun/mind-map/data]")
-    retrieve_table.add_row("--show-context/--no-context", "", "Show connected nodes for each result [default: True]")
-    retrieve_table.add_row("--max-context-per-node INT", "", "Maximum connected nodes to show per result [default: 3, 0 = unlimited]")
+    retrieve_table.add_row(
+        "--data-dir PATH",
+        "",
+        "Directory for database storage [default: /Users/gwansun/mind-map/data]",
+    )
+    retrieve_table.add_row(
+        "--show-context/--no-context", "", "Show connected nodes for each result [default: True]"
+    )
+    retrieve_table.add_row(
+        "--max-context-per-node INT",
+        "",
+        "Maximum connected nodes to show per result [default: 3, 0 = unlimited]",
+    )
     console.print(retrieve_table)
 
     # Model Subcommands
@@ -206,11 +242,13 @@ mind-map serve --port 3000              # Start on custom port"""
 def model_help() -> None:
     """Show help for model management commands."""
     console.print()
-    console.print(Panel.fit(
-        "[bold cyan]Model Management[/bold cyan]\n"
-        "[dim]Manage Ollama models for processing LLM (LLM-B)[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Model Management[/bold cyan]\n"
+            "[dim]Manage Ollama models for processing LLM (LLM-B)[/dim]",
+            border_style="cyan",
+        )
+    )
 
     console.print("\n[bold yellow]SUBCOMMANDS[/bold yellow]\n")
 
@@ -286,6 +324,7 @@ def init(
 
     if with_ollama:
         from mind_map.processor.processing_llm import initialize_ollama
+
         initialize_ollama()
 
 
@@ -411,9 +450,7 @@ def model_select(
 @app.command()
 def memo(
     text: Annotated[str, typer.Argument(help="Text to ingest into the knowledge graph")],
-    source: Annotated[
-        str | None, typer.Option("--source", "-s", help="Source identifier")
-    ] = None,
+    source: Annotated[str | None, typer.Option("--source", "-s", help="Source identifier")] = None,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
     ] = CLI_DATA_DIR,
@@ -421,7 +458,7 @@ def memo(
         str | None,
         typer.Option(
             "--local",
-            help='Use explicit local OpenAI-compatible path. Omit value to auto-resolve first /models entry, or pass a model id'
+            help="Use explicit local OpenAI-compatible path. Omit value to auto-resolve first /models entry, or pass a model id",
         ),
     ] = None,
 ) -> None:
@@ -470,15 +507,22 @@ def memo(
 @app.command()
 def retrieve(
     query: Annotated[str, typer.Argument(help="Search query for the knowledge graph")],
-    n_results: Annotated[int, typer.Option("--n-results", "-n", help="Number of results to return")] = 5,
+    n_results: Annotated[
+        int, typer.Option("--n-results", "-n", help="Number of results to return")
+    ] = 5,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
     ] = CLI_DATA_DIR,
     show_context: Annotated[
-        bool, typer.Option("--show-context/--no-context", help="Show connected nodes for each result")
+        bool,
+        typer.Option("--show-context/--no-context", help="Show connected nodes for each result"),
     ] = True,
     max_context_per_node: Annotated[
-        int, typer.Option("--max-context-per-node", help="Maximum connected nodes to show per result (0 = unlimited)")
+        int,
+        typer.Option(
+            "--max-context-per-node",
+            help="Maximum connected nodes to show per result (0 = unlimited)",
+        ),
     ] = 3,
 ) -> None:
     """Retrieve relevant context from the knowledge graph (no LLM, vector search only)."""
@@ -554,7 +598,9 @@ def ask(
             for i, node in enumerate(nodes, 1):
                 console.print(f"[cyan][{i}][/cyan] {node.document[:200]}...")
         else:
-            console.print("[yellow]No context and no reasoning LLM. Please set up Claude CLI or configure an API key.[/yellow]")
+            console.print(
+                "[yellow]No context and no reasoning LLM. Please set up Claude CLI or configure an API key.[/yellow]"
+            )
         return
 
     console.print("[dim]Generating response with reasoning LLM...[/dim]")
@@ -634,7 +680,9 @@ def prune(
             console.print("[yellow]No concept or entity nodes to prune.[/yellow]")
         raise typer.Exit(0)
 
-    console.print(f"[green]Pruned {len(result['deleted_nodes'])} node(s) and {len(result['deleted_tags'])} tag(s).[/green]")
+    console.print(
+        f"[green]Pruned {len(result['deleted_nodes'])} node(s) and {len(result['deleted_tags'])} tag(s).[/green]"
+    )
     console.print(f"[dim]Removed {result['deleted_edges_count']} edge(s).[/dim]")
 
 

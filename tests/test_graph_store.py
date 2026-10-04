@@ -69,8 +69,12 @@ class TestGetConnectedContext:
         temp_store.add_node(node_id="node_node_a", document="Node A", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_b", document="Node B", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_c", document="Node C", node_type=NodeType.TAG)
-        temp_store.add_edge(Edge(source="node_node_a", target="node_node_c", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="node_node_b", target="node_node_c", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(
+            Edge(source="node_node_a", target="node_node_c", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="node_node_b", target="node_node_c", weight=1.0, relation_type="tagged_as")
+        )
 
         result = temp_store.get_connected_context(["node_node_a", "node_node_b"])
 
@@ -86,9 +90,15 @@ class TestGetConnectedContext:
         temp_store.add_node(node_id="node_node_a", document="Node A", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_b", document="Node B", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_c", document="Node C", node_type=NodeType.TAG)
-        temp_store.add_edge(Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="related_to"))
-        temp_store.add_edge(Edge(source="node_node_a", target="node_node_c", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="node_node_b", target="node_node_c", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(
+            Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="related_to")
+        )
+        temp_store.add_edge(
+            Edge(source="node_node_a", target="node_node_c", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="node_node_b", target="node_node_c", weight=1.0, relation_type="tagged_as")
+        )
 
         # Query for A and B
         result = temp_store.get_connected_context(["node_node_a", "node_node_b"])
@@ -105,7 +115,9 @@ class TestGetConnectedContext:
         temp_store.add_node(node_id="node_node_a", document="Node A", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_b", document="Node B", node_type=NodeType.ENTITY)
         # Edge from B to A (B is source)
-        temp_store.add_edge(Edge(source="node_node_b", target="node_node_a", weight=1.0, relation_type="mentions"))
+        temp_store.add_edge(
+            Edge(source="node_node_b", target="node_node_a", weight=1.0, relation_type="mentions")
+        )
 
         # Query for A should still find the connection
         result = temp_store.get_connected_context(["node_node_a"])
@@ -122,8 +134,14 @@ class TestGetConnectedContext:
         """Test multiple edges to the same neighbor (different relation types)."""
         temp_store.add_node(node_id="node_node_a", document="Node A", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_b", document="Node B", node_type=NodeType.ENTITY)
-        temp_store.add_edge(Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="mentions"))
-        temp_store.add_edge(Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="derived_from"))
+        temp_store.add_edge(
+            Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="mentions")
+        )
+        temp_store.add_edge(
+            Edge(
+                source="node_node_a", target="node_node_b", weight=1.0, relation_type="derived_from"
+            )
+        )
 
         result = temp_store.get_connected_context(["node_node_a"])
 
@@ -140,31 +158,52 @@ class TestGetConnectedContext:
         temp_store.add_node(node_id="node_c", document="Gamma", node_type=NodeType.ENTITY)
 
         # Set explicit importance scores for deterministic secondary ordering
-        temp_store.collection.update(ids=["node_a"], metadatas=[{
-            "type": NodeType.ENTITY.value,
-            "created_at": 0.0,
-            "last_interaction": 0.0,
-            "connection_count": 0,
-            "importance_score": 0.9,
-        }])
-        temp_store.collection.update(ids=["node_b"], metadatas=[{
-            "type": NodeType.ENTITY.value,
-            "created_at": 0.0,
-            "last_interaction": 0.0,
-            "connection_count": 0,
-            "importance_score": 0.2,
-        }])
-        temp_store.collection.update(ids=["node_c"], metadatas=[{
-            "type": NodeType.ENTITY.value,
-            "created_at": 0.0,
-            "last_interaction": 0.0,
-            "connection_count": 0,
-            "importance_score": 0.9,
-        }])
+        temp_store.collection.update(
+            ids=["node_a"],
+            metadatas=[
+                {
+                    "type": NodeType.ENTITY.value,
+                    "created_at": 0.0,
+                    "last_interaction": 0.0,
+                    "connection_count": 0,
+                    "importance_score": 0.9,
+                }
+            ],
+        )
+        temp_store.collection.update(
+            ids=["node_b"],
+            metadatas=[
+                {
+                    "type": NodeType.ENTITY.value,
+                    "created_at": 0.0,
+                    "last_interaction": 0.0,
+                    "connection_count": 0,
+                    "importance_score": 0.2,
+                }
+            ],
+        )
+        temp_store.collection.update(
+            ids=["node_c"],
+            metadatas=[
+                {
+                    "type": NodeType.ENTITY.value,
+                    "created_at": 0.0,
+                    "last_interaction": 0.0,
+                    "connection_count": 0,
+                    "importance_score": 0.9,
+                }
+            ],
+        )
 
-        temp_store.add_edge(Edge(source="node_anchor", target="node_b", weight=1.0, relation_type="mentions"))
-        temp_store.add_edge(Edge(source="node_anchor", target="node_a", weight=1.0, relation_type="mentions"))
-        temp_store.add_edge(Edge(source="node_anchor", target="node_c", weight=2.0, relation_type="mentions"))
+        temp_store.add_edge(
+            Edge(source="node_anchor", target="node_b", weight=1.0, relation_type="mentions")
+        )
+        temp_store.add_edge(
+            Edge(source="node_anchor", target="node_a", weight=1.0, relation_type="mentions")
+        )
+        temp_store.add_edge(
+            Edge(source="node_anchor", target="node_c", weight=2.0, relation_type="mentions")
+        )
 
         result = temp_store.get_connected_context(["node_anchor"])
         ordered_ids = [neighbor.id for neighbor, _ in result["node_anchor"]]
@@ -183,7 +222,9 @@ class TestFirstHopNeighbors:
         temp_store.add_node("concept_b", "Concept B", NodeType.CONCEPT)
         temp_store.add_edge(Edge(source="concept_a", target="entity_a", relation_type="mentions"))
         temp_store.add_edge(Edge(source="concept_a", target="tag_a", relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="concept_a", target="concept_b", relation_type="related_context"))
+        temp_store.add_edge(
+            Edge(source="concept_a", target="concept_b", relation_type="related_context")
+        )
 
         neighbors = temp_store.get_first_hop_neighbors(["concept_a"])
         neighbor_ids = {n.id for n in neighbors}
@@ -194,8 +235,12 @@ class TestFirstHopNeighbors:
         temp_store.add_node("concept_a", "Concept A", NodeType.CONCEPT)
         temp_store.add_node("concept_b", "Concept B", NodeType.CONCEPT)
         temp_store.add_node("entity_shared", "Shared", NodeType.ENTITY)
-        temp_store.add_edge(Edge(source="concept_a", target="entity_shared", relation_type="mentions"))
-        temp_store.add_edge(Edge(source="concept_b", target="entity_shared", relation_type="mentions"))
+        temp_store.add_edge(
+            Edge(source="concept_a", target="entity_shared", relation_type="mentions")
+        )
+        temp_store.add_edge(
+            Edge(source="concept_b", target="entity_shared", relation_type="mentions")
+        )
 
         neighbors = temp_store.get_first_hop_neighbors(["concept_a", "concept_b"])
         neighbor_ids = [n.id for n in neighbors]
@@ -208,7 +253,9 @@ class TestGetEdges:
 
     def test_get_edges_empty(self, temp_store: GraphStore):
         """Test getting edges for node with no connections."""
-        temp_store.add_node(node_id="node_lone_node", document="Lone node", node_type=NodeType.CONCEPT)
+        temp_store.add_node(
+            node_id="node_lone_node", document="Lone node", node_type=NodeType.CONCEPT
+        )
 
         edges = temp_store.get_edges("node_lone_node")
         assert edges == []
@@ -217,7 +264,9 @@ class TestGetEdges:
         """Test that get_edges finds edges regardless of direction."""
         temp_store.add_node(node_id="node_node_a", document="Node A", node_type=NodeType.CONCEPT)
         temp_store.add_node(node_id="node_node_b", document="Node B", node_type=NodeType.ENTITY)
-        temp_store.add_edge(Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="related_to"))
+        temp_store.add_edge(
+            Edge(source="node_node_a", target="node_node_b", weight=1.0, relation_type="related_to")
+        )
 
         # Query from either direction should return the edge
         edges_from_a = temp_store.get_edges("node_node_a")
@@ -237,8 +286,12 @@ class TestDeleteNodeTypeAware:
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("tag1", "#tag1", NodeType.TAG)
         temp_store.add_node("tag2", "#tag2", NodeType.TAG)
-        temp_store.add_edge(Edge(source="concept", target="tag1", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="concept", target="tag2", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(
+            Edge(source="concept", target="tag1", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="concept", target="tag2", weight=1.0, relation_type="tagged_as")
+        )
 
         result = temp_store.delete_node("concept")
 
@@ -255,8 +308,12 @@ class TestDeleteNodeTypeAware:
         temp_store.add_node("concept1", "Concept 1", NodeType.CONCEPT)
         temp_store.add_node("concept2", "Concept 2", NodeType.CONCEPT)
         temp_store.add_node("shared_tag", "#shared", NodeType.TAG)
-        temp_store.add_edge(Edge(source="concept1", target="shared_tag", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="concept2", target="shared_tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(
+            Edge(source="concept1", target="shared_tag", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="concept2", target="shared_tag", weight=1.0, relation_type="tagged_as")
+        )
 
         result = temp_store.delete_node("concept1")
 
@@ -266,13 +323,19 @@ class TestDeleteNodeTypeAware:
         # concept2 survives
         assert temp_store.get_node("concept2") is not None
 
-    def test_concept_delete_removes_edges_from_deleted_tags_to_surviving_nodes(self, temp_store: GraphStore):
+    def test_concept_delete_removes_edges_from_deleted_tags_to_surviving_nodes(
+        self, temp_store: GraphStore
+    ):
         """When a concept deletes its tag neighbors, edges from those tags to surviving nodes are also removed."""
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("entity", "An entity", NodeType.ENTITY)
         temp_store.add_node("tag", "#tag", NodeType.TAG)
-        temp_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="tag", target="entity", weight=1.0, relation_type="related_to"))
+        temp_store.add_edge(
+            Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="tag", target="entity", weight=1.0, relation_type="related_to")
+        )
 
         result = temp_store.delete_node("concept")
 
@@ -287,7 +350,9 @@ class TestDeleteNodeTypeAware:
         """Deleting a tag node does NOT delete neighboring concepts — only tag+edges are removed."""
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("tag", "#tag", NodeType.TAG)
-        temp_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(
+            Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as")
+        )
 
         result = temp_store.delete_node("tag")
 
@@ -303,8 +368,12 @@ class TestDeleteNodeTypeAware:
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("entity", "An entity", NodeType.ENTITY)
         temp_store.add_node("tag", "#tag", NodeType.TAG)
-        temp_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="entity", target="tag", weight=1.0, relation_type="related_to"))
+        temp_store.add_edge(
+            Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="entity", target="tag", weight=1.0, relation_type="related_to")
+        )
 
         result = temp_store.delete_node("entity")
 
@@ -321,8 +390,12 @@ class TestDeleteNodeTypeAware:
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("tag1", "#tag1", NodeType.TAG)
         temp_store.add_node("entity", "An entity", NodeType.ENTITY)
-        temp_store.add_edge(Edge(source="concept", target="tag1", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="tag1", target="entity", weight=1.0, relation_type="related_to"))
+        temp_store.add_edge(
+            Edge(source="concept", target="tag1", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="tag1", target="entity", weight=1.0, relation_type="related_to")
+        )
 
         result = temp_store.delete_node("concept")
 
@@ -345,7 +418,9 @@ class TestDeleteNodeTypeAware:
         """Deleting a concept with no tag neighbors returns empty tag list."""
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("entity", "An entity", NodeType.ENTITY)
-        temp_store.add_edge(Edge(source="concept", target="entity", weight=1.0, relation_type="related_to"))
+        temp_store.add_edge(
+            Edge(source="concept", target="entity", weight=1.0, relation_type="related_to")
+        )
 
         result = temp_store.delete_node("concept")
 
@@ -360,8 +435,12 @@ class TestDeleteNodeTypeAware:
         temp_store.add_node("concept_a", "Concept A", NodeType.CONCEPT)
         temp_store.add_node("concept_b", "Concept B", NodeType.CONCEPT)
         temp_store.add_node("shared_tag", "#shared", NodeType.TAG)
-        temp_store.add_edge(Edge(source="concept_a", target="shared_tag", weight=1.0, relation_type="tagged_as"))
-        temp_store.add_edge(Edge(source="concept_b", target="shared_tag", weight=1.0, relation_type="tagged_as"))
+        temp_store.add_edge(
+            Edge(source="concept_a", target="shared_tag", weight=1.0, relation_type="tagged_as")
+        )
+        temp_store.add_edge(
+            Edge(source="concept_b", target="shared_tag", weight=1.0, relation_type="tagged_as")
+        )
 
         result = temp_store.delete_node("concept_a")
 

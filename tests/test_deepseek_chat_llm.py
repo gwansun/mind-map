@@ -51,9 +51,7 @@ class TestDeepSeekChatLLM:
         ]
         with patch("requests.post") as mock_post:
             mock_resp = MagicMock()
-            mock_resp.json.return_value = {
-                "choices": [{"message": {"content": "Hi there!"}}]
-            }
+            mock_resp.json.return_value = {"choices": [{"message": {"content": "Hi there!"}}]}
             mock_resp.raise_for_status = MagicMock()
             mock_post.return_value = mock_resp
 

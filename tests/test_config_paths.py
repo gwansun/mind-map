@@ -15,6 +15,7 @@ The same defect appeared at three more sites (bare ``load_dotenv()`` in
 ``processor/processing_llm.py`` that could create a stray config.yaml wherever
 the process happened to be).
 """
+
 from __future__ import annotations
 
 from mind_map.core import config as cfg
@@ -34,9 +35,7 @@ def test_load_config_is_cwd_independent(tmp_path, monkeypatch):
     """From an unrelated cwd, the PROJECT config must still be read."""
     monkeypatch.chdir(tmp_path)
     loaded = cfg.load_config()
-    assert "reasoning_llm" in loaded, (
-        "project config.yaml was not read when cwd was unrelated"
-    )
+    assert "reasoning_llm" in loaded, "project config.yaml was not read when cwd was unrelated"
 
 
 def test_load_config_ignores_a_decoy_config_in_cwd(tmp_path, monkeypatch):
@@ -64,6 +63,4 @@ def test_processing_model_persist_writes_project_config_not_cwd(tmp_path, monkey
     assert pl.set_processing_model("qwen2.5:3b", persist=True) is True
 
     assert "qwen2.5:3b" in cfgfile.read_text(), "project config was not updated"
-    assert not (elsewhere / "config.yaml").exists(), (
-        "a stray config.yaml was written into the cwd"
-    )
+    assert not (elsewhere / "config.yaml").exists(), "a stray config.yaml was written into the cwd"

@@ -47,6 +47,7 @@ class TestMiniMaxChatLLMFactory:
             result = get_minimax_llm()
             assert result is not None
             from mind_map.rag.reasoning_llm import MiniMaxChatLLM
+
             assert isinstance(result, MiniMaxChatLLM)
 
 
@@ -67,9 +68,7 @@ class TestMiniMaxChatLLMMessages:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": "4"}}]
-        }
+        mock_response.json.return_value = {"choices": [{"message": {"content": "4"}}]}
 
         with patch("requests.post", return_value=mock_response) as mock_post:
             llm._generate(messages)
@@ -104,16 +103,14 @@ class TestMiniMaxChatLLMThinkTags:
 
         # Simulate API response with think tags
         raw_response = (
-            '<think>The user wants me to extract JSON data. '
-            'Let me think about this carefully.</think>'
+            "<think>The user wants me to extract JSON data. "
+            "Let me think about this carefully.</think>"
             '{"summary": "Test summary", "tags": ["test"]}'
         )
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": raw_response}}]
-        }
+        mock_response.json.return_value = {"choices": [{"message": {"content": raw_response}}]}
 
         with patch("requests.post", return_value=mock_response):
             result = llm._generate(messages)

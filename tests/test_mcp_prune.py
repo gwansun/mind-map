@@ -217,7 +217,10 @@ class TestPruneReport:
         _add_concept(temp_store, "c1", "Concept")
         result = json.loads(_prune())
         assert set(result.keys()) == {
-            "deleted_nodes", "deleted_tags", "deleted_edges_count", "summary",
+            "deleted_nodes",
+            "deleted_tags",
+            "deleted_edges_count",
+            "summary",
         }
 
     def test_deleted_node_has_expected_fields(self, temp_store: GraphStore):

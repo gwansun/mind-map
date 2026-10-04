@@ -243,17 +243,13 @@ class TestReportWorkspace:
 
     def test_custom_workspace_in_summary(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)
-            ):
+            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
                 result = json.loads(_report(workspace_id="alice"))
                 assert result["summary"]["workspace"] == "alice"
 
     def test_separate_workspaces_isolated(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)
-            ):
+            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
                 # Add data to workspace "alice"
                 alice_store = get_store("alice")
                 _add_concept(alice_store, "a1", "Alice concept")
@@ -278,8 +274,13 @@ class TestReportJsonStructure:
     def test_summary_has_all_expected_keys(self, temp_store: GraphStore):
         result = json.loads(_report())
         expected_keys = {
-            "workspace", "total_nodes", "total_edges",
-            "concepts", "entities", "tags", "avg_connections",
+            "workspace",
+            "total_nodes",
+            "total_edges",
+            "concepts",
+            "entities",
+            "tags",
+            "avg_connections",
         }
         assert set(result["summary"].keys()) == expected_keys
 
@@ -287,8 +288,13 @@ class TestReportJsonStructure:
         _add_concept(temp_store, "c1", "Test")
         result = json.loads(_report())
         expected_keys = {
-            "id", "document", "type", "importance_score",
-            "connection_count", "edges", "tags",
+            "id",
+            "document",
+            "type",
+            "importance_score",
+            "connection_count",
+            "edges",
+            "tags",
         }
         assert set(result["top_nodes"][0].keys()) == expected_keys
 

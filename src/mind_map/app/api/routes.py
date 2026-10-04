@@ -83,10 +83,7 @@ async def health() -> dict[str, Any]:
     return {
         "status": "healthy",
         "llm_status": llm_status,
-        "graph_stats": {
-            "total_nodes": stats["total_nodes"],
-            "total_edges": stats["total_edges"]
-        }
+        "graph_stats": {"total_nodes": stats["total_nodes"], "total_edges": stats["total_edges"]},
     }
 
 
@@ -103,16 +100,16 @@ async def get_graph() -> GraphResponse:
     result = store.collection.get(include=["documents", "metadatas"])
     nodes = []
     for i, node_id in enumerate(result["ids"]):
-        nodes.append({
-            "id": node_id,
-            "document": result["documents"][i] if result["documents"] else "",
-            "metadata": result["metadatas"][i] if result["metadatas"] else {},
-        })
+        nodes.append(
+            {
+                "id": node_id,
+                "document": result["documents"][i] if result["documents"] else "",
+                "metadata": result["metadatas"][i] if result["metadatas"] else {},
+            }
+        )
 
     # Get all edges
-    cursor = store.sqlite.execute(
-        "SELECT source, target, weight, relation_type FROM edges"
-    )
+    cursor = store.sqlite.execute("SELECT source, target, weight, relation_type FROM edges")
     edges = [
         {"source": row[0], "target": row[1], "weight": row[2], "relation_type": row[3]}
         for row in cursor.fetchall()

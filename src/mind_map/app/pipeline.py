@@ -1,4 +1,5 @@
 """LangGraph pipelines for strict memo CLI ingestion and internal non-CLI ingestion."""
+
 from __future__ import annotations
 
 import logging
@@ -45,8 +46,17 @@ _RETRIEVAL_TOP_K = 5
 def _heuristic_filter(text: str, retrieved_concepts: list[GraphNode]) -> FilterDecision:
     """Simple non-LLM novelty filter."""
     trivial_patterns = [
-        "hello", "hi", "thanks", "thank you", "ok", "okay",
-        "yes", "no", "sure", "bye", "goodbye"
+        "hello",
+        "hi",
+        "thanks",
+        "thank you",
+        "ok",
+        "okay",
+        "yes",
+        "no",
+        "sure",
+        "bye",
+        "goodbye",
     ]
     lower_text = text.lower().strip()
 
@@ -76,7 +86,8 @@ def create_retrieval_node(store: GraphStore) -> Callable[[PipelineState], dict[s
     def retrieval_node(state: PipelineState) -> dict[str, Any]:
         text = state.raw_text.strip()
         concepts = [
-            node for node in store.query_similar(text, n_results=_RETRIEVAL_TOP_K, max_distance=0.5)
+            node
+            for node in store.query_similar(text, n_results=_RETRIEVAL_TOP_K, max_distance=0.5)
             if node.metadata.type == NodeType.CONCEPT
         ]
         neighbors = store.get_first_hop_neighbors([node.id for node in concepts])
@@ -109,7 +120,7 @@ def create_filter_node(*, target: MemoTarget) -> Callable[[PipelineState], dict[
                     action="discard",
                     reason="Memo target execution failed",
                     summary=None,
-                )
+                ),
             }
 
     return filter_node
@@ -128,6 +139,7 @@ def create_extraction_node(*, target: MemoTarget) -> Callable[[PipelineState], d
             references = [*state.retrieval.entities, *state.retrieval.tags]
 
         from mind_map.processor.knowledge_processor import KnowledgeProcessor
+
         processor = KnowledgeProcessor(target=target)
 
         try:
@@ -219,10 +231,7 @@ def _heuristic_extraction(text: str) -> dict[str, Any]:
     tags = [f"#{tag}" for tag in hashtags]
 
     words = text.split()
-    entities = [
-        w for w in words
-        if len(w) > 2 and w[0].isupper() and not w.isupper()
-    ]
+    entities = [w for w in words if len(w) > 2 and w[0].isupper() and not w.isupper()]
     entities = list(set(entities))[:5]
 
     if not tags:

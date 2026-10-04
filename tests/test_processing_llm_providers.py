@@ -70,9 +70,11 @@ class TestTryCloudProcessingLLM:
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}):
             with patch.dict(
                 "sys.modules",
-                {"langchain_google_genai": MagicMock(
-                    ChatGoogleGenerativeAI=MagicMock(return_value=mock_llm)
-                )},
+                {
+                    "langchain_google_genai": MagicMock(
+                        ChatGoogleGenerativeAI=MagicMock(return_value=mock_llm)
+                    )
+                },
             ):
                 llm, provider = _try_cloud_processing_llm("auto")
                 assert provider == "gemini"
@@ -86,9 +88,7 @@ class TestTryCloudProcessingLLM:
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             with patch.dict(
                 "sys.modules",
-                {"langchain_anthropic": MagicMock(
-                    ChatAnthropic=MagicMock(return_value=mock_llm)
-                )},
+                {"langchain_anthropic": MagicMock(ChatAnthropic=MagicMock(return_value=mock_llm))},
             ):
                 llm, provider = _try_cloud_processing_llm("auto")
                 assert provider == "anthropic"
@@ -102,9 +102,7 @@ class TestTryCloudProcessingLLM:
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
             with patch.dict(
                 "sys.modules",
-                {"langchain_openai": MagicMock(
-                    ChatOpenAI=MagicMock(return_value=mock_llm)
-                )},
+                {"langchain_openai": MagicMock(ChatOpenAI=MagicMock(return_value=mock_llm))},
             ):
                 llm, provider = _try_cloud_processing_llm("auto")
                 assert provider == "openai"
@@ -115,10 +113,13 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_gemini = MagicMock()
-        with patch.dict(os.environ, {
-            "GOOGLE_API_KEY": "gkey",
-            "ANTHROPIC_API_KEY": "akey",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_API_KEY": "gkey",
+                "ANTHROPIC_API_KEY": "akey",
+            },
+        ):
             with patch.dict(
                 "sys.modules",
                 {
@@ -138,10 +139,13 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_anthropic = MagicMock()
-        with patch.dict(os.environ, {
-            "GOOGLE_API_KEY": "gkey",
-            "ANTHROPIC_API_KEY": "akey",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_API_KEY": "gkey",
+                "ANTHROPIC_API_KEY": "akey",
+            },
+        ):
             with patch.dict(
                 "sys.modules",
                 {
@@ -159,22 +163,21 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_openai = MagicMock()
-        with patch.dict(os.environ, {
-            "GOOGLE_API_KEY": "gkey",
-            "OPENAI_API_KEY": "okey",
-        }):
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_API_KEY": "gkey",
+                "OPENAI_API_KEY": "okey",
+            },
+        ):
             # Gemini import fails, should fall through to OpenAI
             gemini_mod = MagicMock()
-            gemini_mod.ChatGoogleGenerativeAI = MagicMock(
-                side_effect=ImportError("not installed")
-            )
+            gemini_mod.ChatGoogleGenerativeAI = MagicMock(side_effect=ImportError("not installed"))
             with patch.dict(
                 "sys.modules",
                 {
                     "langchain_google_genai": gemini_mod,
-                    "langchain_openai": MagicMock(
-                        ChatOpenAI=MagicMock(return_value=mock_openai)
-                    ),
+                    "langchain_openai": MagicMock(ChatOpenAI=MagicMock(return_value=mock_openai)),
                 },
             ):
                 llm, provider = _try_cloud_processing_llm("auto")
@@ -191,9 +194,7 @@ class TestDetectProcessingProvider:
         """When provider=ollama, should return ollama regardless of API keys."""
         from mind_map.processor.processing_llm import detect_processing_provider
 
-        config = {
-            "processing_llm": {"provider": "ollama", "model": "mistral"}
-        }
+        config = {"processing_llm": {"provider": "ollama", "model": "mistral"}}
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
             with patch(LOAD_CONFIG_PATCH, return_value=config):
                 provider, model = detect_processing_provider()
@@ -833,9 +834,7 @@ class TestCommandCodeProcessingProvider:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_gemini = MagicMock()
-        with patch.dict(
-            os.environ, {"GOOGLE_API_KEY": "gkey", "COMMANDCODE_API_KEY": "cckey"}
-        ):
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey", "COMMANDCODE_API_KEY": "cckey"}):
             with patch.dict(
                 "sys.modules",
                 {

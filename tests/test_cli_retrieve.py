@@ -42,9 +42,15 @@ def seed_retrieve_fixture(store: GraphStore) -> None:
         node_type=NodeType.ENTITY,
     )
 
-    store.add_edge(Edge(source="node_anchor", target="node_tag_1", weight=3.0, relation_type="tagged_as"))
-    store.add_edge(Edge(source="node_anchor", target="node_entity_1", weight=2.0, relation_type="mentions"))
-    store.add_edge(Edge(source="node_anchor", target="node_entity_2", weight=1.0, relation_type="related_to"))
+    store.add_edge(
+        Edge(source="node_anchor", target="node_tag_1", weight=3.0, relation_type="tagged_as")
+    )
+    store.add_edge(
+        Edge(source="node_anchor", target="node_entity_1", weight=2.0, relation_type="mentions")
+    )
+    store.add_edge(
+        Edge(source="node_anchor", target="node_entity_2", weight=1.0, relation_type="related_to")
+    )
 
 
 class TestRetrieveCli:
@@ -57,7 +63,14 @@ class TestRetrieveCli:
 
             result = runner.invoke(
                 app,
-                ["retrieve", "Anchor concept about retrieval", "--data-dir", tmpdir, "--n-results", "1"],
+                [
+                    "retrieve",
+                    "Anchor concept about retrieval",
+                    "--data-dir",
+                    tmpdir,
+                    "--n-results",
+                    "1",
+                ],
             )
 
             assert result.exit_code == 0
@@ -113,5 +126,7 @@ class TestRetrieveCli:
             assert len(related_lines) == 2
             # Sorted by weight desc, so the 3.0 and 2.0 edges should appear, but not the 1.0 edge.
             assert any("related [tag] via tagged_as: #TagOne" in line for line in related_lines)
-            assert any("related [entity] via mentions: Entity One" in line for line in related_lines)
+            assert any(
+                "related [entity] via mentions: Entity One" in line for line in related_lines
+            )
             assert all("Entity Two" not in line for line in related_lines)

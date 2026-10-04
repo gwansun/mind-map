@@ -48,9 +48,13 @@ class TestPipelineRetrievalStep:
         assert len(node_ids) > 0
         assert "Created" in message
 
-    def test_retrieval_step_populates_retrieval_context(self, temp_store: GraphStore, minimax_target: MiniMaxTarget):
+    def test_retrieval_step_populates_retrieval_context(
+        self, temp_store: GraphStore, minimax_target: MiniMaxTarget
+    ):
         pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=minimax_target)
-        initial = PipelineState(raw_text="Tell me about Python language features", target=minimax_target)
+        initial = PipelineState(
+            raw_text="Tell me about Python language features", target=minimax_target
+        )
         final = pipeline.invoke(initial)
 
         assert "retrieval" in final
@@ -59,7 +63,9 @@ class TestPipelineRetrievalStep:
         assert hasattr(retrieval, "entities")
         assert hasattr(retrieval, "tags")
 
-    def test_retrieval_step_empty_for_new_graph(self, temp_store: GraphStore, minimax_target: MiniMaxTarget):
+    def test_retrieval_step_empty_for_new_graph(
+        self, temp_store: GraphStore, minimax_target: MiniMaxTarget
+    ):
         pipeline = build_memo_cli_ingestion_pipeline(temp_store, target=minimax_target)
         initial = PipelineState(raw_text="Python is great for data science", target=minimax_target)
         final = pipeline.invoke(initial)
@@ -122,7 +128,9 @@ class TestStorageBehavior:
         state = PipelineState(
             raw_text="Note about machine learning",
             retrieval=RetrievalContext(concepts=[], entities=[], tags=[]),
-            filter_decision=FilterDecision(action="new", reason="new", summary="Note about machine learning"),
+            filter_decision=FilterDecision(
+                action="new", reason="new", summary="Note about machine learning"
+            ),
             extraction=extraction,
         )
 
@@ -148,7 +156,9 @@ class TestStorageBehavior:
         state = PipelineState(
             raw_text="Kubernetes container note",
             retrieval=RetrievalContext(concepts=[], entities=[], tags=[]),
-            filter_decision=FilterDecision(action="new", reason="new", summary="Kubernetes container note"),
+            filter_decision=FilterDecision(
+                action="new", reason="new", summary="Kubernetes container note"
+            ),
             extraction=extraction,
         )
 
@@ -161,7 +171,9 @@ class TestStorageBehavior:
         k8s_edge = next((e for e in mentions_edges if e.target == "entity_kubernetes"), None)
         assert k8s_edge is not None
 
-    def test_storage_links_retrieved_entity_when_mentioned_in_new_content(self, temp_store: GraphStore):
+    def test_storage_links_retrieved_entity_when_mentioned_in_new_content(
+        self, temp_store: GraphStore
+    ):
         retrieved_entity = temp_store.add_node(
             node_id="entity_mlx_lm",
             document="MLX LM",
@@ -179,7 +191,11 @@ class TestStorageBehavior:
         state = PipelineState(
             raw_text="MLX LM supports local inference on Mac devices.",
             retrieval=RetrievalContext(concepts=[], entities=[retrieved_entity], tags=[]),
-            filter_decision=FilterDecision(action="new", reason="new", summary="MLX LM supports local inference on Mac devices."),
+            filter_decision=FilterDecision(
+                action="new",
+                reason="new",
+                summary="MLX LM supports local inference on Mac devices.",
+            ),
             extraction=extraction,
         )
 
@@ -190,7 +206,9 @@ class TestStorageBehavior:
         mention_targets = {e.target for e in edges if e.relation_type == "mentions"}
         assert "entity_mlx_lm" in mention_targets
 
-    def test_storage_links_retrieved_tag_when_mentioned_in_new_content(self, temp_store: GraphStore):
+    def test_storage_links_retrieved_tag_when_mentioned_in_new_content(
+        self, temp_store: GraphStore
+    ):
         retrieved_tag = temp_store.add_node(
             node_id="tag_quantization",
             document="#quantization",
@@ -208,7 +226,11 @@ class TestStorageBehavior:
         state = PipelineState(
             raw_text="This note discusses quantization for local MLX models.",
             retrieval=RetrievalContext(concepts=[], entities=[], tags=[retrieved_tag]),
-            filter_decision=FilterDecision(action="new", reason="new", summary="This note discusses quantization for local MLX models."),
+            filter_decision=FilterDecision(
+                action="new",
+                reason="new",
+                summary="This note discusses quantization for local MLX models.",
+            ),
             extraction=extraction,
         )
 

@@ -1,4 +1,5 @@
 """Env-driven base URL / API key support for the memo ``--local`` target."""
+
 from __future__ import annotations
 
 from mind_map.processor import cli_executor as ce

@@ -48,6 +48,7 @@ DEFAULT_DATA_DIR = get_data_dir()
 # workspace_id -> GraphStore instance
 stores: dict[str, GraphStore] = {}
 
+
 def get_store(workspace_id: str | None = None) -> GraphStore:
     """Get or initialize a GraphStore for a specific workspace.
 
@@ -69,6 +70,7 @@ def get_store(workspace_id: str | None = None) -> GraphStore:
         stores[ws_id] = store
 
     return stores[ws_id]
+
 
 @mcp.tool()
 def mind_map_retrieve(
@@ -105,6 +107,7 @@ def mind_map_retrieve(
         return "\n".join(lines)
     except Exception as e:
         return f"Error retrieving data: {str(e)}"
+
 
 @mcp.tool()
 def mind_map_memo(
@@ -227,6 +230,7 @@ def mind_map_stats(
         return _format_stats_text(stats, workspace_id=workspace_id or "default")
     except Exception as e:
         return f"Error getting stats: {str(e)}"
+
 
 @mcp.tool()
 def mind_map_report(

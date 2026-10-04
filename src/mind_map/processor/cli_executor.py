@@ -3,6 +3,7 @@
 Runs a shell command with a prompt appended, captures stdout, parses JSON,
 and raises on any failure (no fallback chain).
 """
+
 from __future__ import annotations
 
 import json
@@ -17,6 +18,7 @@ from typing import Any
 
 class CLIExecutionError(RuntimeError):
     """Raised when a CLI command fails, returns non-zero, or produces invalid JSON."""
+
     pass
 
 
@@ -61,6 +63,7 @@ class MiniMaxTarget:
     Replaces the deprecated OpenClawTarget. Uses the MiniMax M2.5 model
     via direct HTTP calls instead of shelling out to the openclaw CLI.
     """
+
     api_key: str
     base_url: str = "https://api.minimax.io"
     model: str = "MiniMax-M2.5"
@@ -70,7 +73,9 @@ class MiniMaxTarget:
 MemoTarget = LocalTarget | MiniMaxTarget
 
 
-def resolve_local_model(*, model: str | None = None, base_url: str = _DEFAULT_LOCAL_BASE_URL) -> str:
+def resolve_local_model(
+    *, model: str | None = None, base_url: str = _DEFAULT_LOCAL_BASE_URL
+) -> str:
     """Resolve a local OpenAI-compatible model.
 
     If model is provided, use it directly. Otherwise query /models and choose the
@@ -102,7 +107,11 @@ def resolve_local_model(*, model: str | None = None, base_url: str = _DEFAULT_LO
         raise CLIExecutionError(f"No local models available at {models_url}")
 
     first = data[0]
-    if not isinstance(first, dict) or not isinstance(first.get("id"), str) or not first["id"].strip():
+    if (
+        not isinstance(first, dict)
+        or not isinstance(first.get("id"), str)
+        or not first["id"].strip()
+    ):
         raise CLIExecutionError(f"Invalid local model entry returned by {models_url}")
 
     return first["id"].strip()
@@ -137,20 +146,17 @@ def build_local_command(target: LocalTarget) -> str:
     the historical name). The prompt is appended as the last argument and
     injected into the JSON payload under messages[0].content.
     """
-    return (
-        "python3 -c "
-        + shlex.quote(
-            "import json, sys, urllib.request; "
-            f"base={target.base_url.rstrip('/')!r}; "
-            f"model={target.model!r}; "
-            f"max_tokens={_LOCAL_MAX_COMPLETION_TOKENS!r}; "
-            "prompt=sys.argv[1]; "
-            "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'response_format': {'type': 'json_object'}, 'max_tokens': max_tokens}).encode(); "
-            f"headers={_local_headers_literal(target.api_key)}; "
-            "req=urllib.request.Request(base + '/chat/completions', data=body, headers=headers); "
-            "resp=urllib.request.urlopen(req, timeout=60); "
-            "sys.stdout.write(resp.read().decode())"
-        )
+    return "python3 -c " + shlex.quote(
+        "import json, sys, urllib.request; "
+        f"base={target.base_url.rstrip('/')!r}; "
+        f"model={target.model!r}; "
+        f"max_tokens={_LOCAL_MAX_COMPLETION_TOKENS!r}; "
+        "prompt=sys.argv[1]; "
+        "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'response_format': {'type': 'json_object'}, 'max_tokens': max_tokens}).encode(); "
+        f"headers={_local_headers_literal(target.api_key)}; "
+        "req=urllib.request.Request(base + '/chat/completions', data=body, headers=headers); "
+        "resp=urllib.request.urlopen(req, timeout=60); "
+        "sys.stdout.write(resp.read().decode())"
     )
 
 
@@ -166,26 +172,23 @@ def build_minimax_http_command(target: MiniMaxTarget) -> str:
     with a direct HTTP call to the MiniMax chat completions endpoint.
     The prompt is injected via command-line argument.
     """
-    return (
-        "python3 -c "
-        + shlex.quote(
-            "import json, sys, urllib.request; "
-            f"api_key={target.api_key!r}; "
-            f"base_url={target.base_url.rstrip('/')!r}; "
-            f"model={target.model!r}; "
-            f"max_tokens={target.max_tokens!r}; "
-            "prompt=sys.argv[1]; "
-            "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': max_tokens}).encode(); "
-            "req=urllib.request.Request(base_url + '/v1/chat/completions', data=body, "
-            "headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key}); "
-            "resp=urllib.request.urlopen(req, timeout=60); "
-            "raw=resp.read().decode(); "
-            "data=json.loads(raw); "
-            "content=data['choices'][0]['message']['content']; "
-            "import re; "
-            "cleaned=re.sub(r'<think>.*?</think>\\s*', '', content, flags=re.DOTALL).strip(); "
-            "sys.stdout.write(cleaned)"
-        )
+    return "python3 -c " + shlex.quote(
+        "import json, sys, urllib.request; "
+        f"api_key={target.api_key!r}; "
+        f"base_url={target.base_url.rstrip('/')!r}; "
+        f"model={target.model!r}; "
+        f"max_tokens={target.max_tokens!r}; "
+        "prompt=sys.argv[1]; "
+        "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': max_tokens}).encode(); "
+        "req=urllib.request.Request(base_url + '/v1/chat/completions', data=body, "
+        "headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key}); "
+        "resp=urllib.request.urlopen(req, timeout=60); "
+        "raw=resp.read().decode(); "
+        "data=json.loads(raw); "
+        "content=data['choices'][0]['message']['content']; "
+        "import re; "
+        "cleaned=re.sub(r'<think>.*?</think>\\s*', '', content, flags=re.DOTALL).strip(); "
+        "sys.stdout.write(cleaned)"
     )
 
 
@@ -255,9 +258,7 @@ def run_cli_json(
         content = "\n".join(lines[json_line_idx:])
 
     if not content:
-        raise CLIExecutionError(
-            f"Command returned empty stdout: {command_template}"
-        )
+        raise CLIExecutionError(f"Command returned empty stdout: {command_template}")
 
     def _find_json_bounds(text: str) -> tuple[int, int] | None:
         if not text:
@@ -297,7 +298,7 @@ def run_cli_json(
 
     for fence in ("```json\n", "```json", "```\n", "```"):
         if content.startswith(fence):
-            trimmed = content[len(fence):].strip()
+            trimmed = content[len(fence) :].strip()
             try:
                 return json.loads(trimmed, strict=False)
             except json.JSONDecodeError:
@@ -312,7 +313,7 @@ def run_cli_json(
     bounds = _find_json_bounds(content)
     if bounds is not None:
         try:
-            return json.loads(content[bounds[0]:bounds[1]], strict=False)
+            return json.loads(content[bounds[0] : bounds[1]], strict=False)
         except json.JSONDecodeError:
             pass
 
@@ -342,9 +343,9 @@ def _extract_json_payload_from_chat_completion(data: dict[str, Any]) -> dict[str
 
     text = content.strip()
     if text.startswith("```json"):
-        text = text[len("```json"):].strip()
+        text = text[len("```json") :].strip()
     elif text.startswith("```"):
-        text = text[len("```"):].strip()
+        text = text[len("```") :].strip()
     if text.endswith("```"):
         text = text[:-3].strip()
 
@@ -354,7 +355,7 @@ def _extract_json_payload_from_chat_completion(data: dict[str, Any]) -> dict[str
         return None
 
     try:
-        payload = json.loads(text[start:end + 1], strict=False)
+        payload = json.loads(text[start : end + 1], strict=False)
     except json.JSONDecodeError:
         return None
 

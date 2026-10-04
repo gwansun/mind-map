@@ -56,7 +56,9 @@ def install_ollama() -> bool:
                 console.print("[green]Ollama installed successfully via Homebrew[/green]")
                 return True
             else:
-                console.print("[yellow]Homebrew not found. Please install Ollama manually:[/yellow]")
+                console.print(
+                    "[yellow]Homebrew not found. Please install Ollama manually:[/yellow]"
+                )
                 console.print("[dim]Visit: https://ollama.ai/download[/dim]")
                 return False
 
@@ -65,20 +67,22 @@ def install_ollama() -> bool:
             subprocess.run(
                 ["curl", "-fsSL", "https://ollama.ai/install.sh"],
                 stdout=subprocess.PIPE,
-                check=True
+                check=True,
             )
             result = subprocess.run(
                 ["sh", "-c", "curl -fsSL https://ollama.ai/install.sh | sh"],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
             )
             console.print("[green]Ollama installed successfully[/green]")
             return True
 
         elif system == "Windows":
             console.print("[yellow]Automatic installation not supported on Windows[/yellow]")
-            console.print("[dim]Please download and install Ollama from: https://ollama.ai/download[/dim]")
+            console.print(
+                "[dim]Please download and install Ollama from: https://ollama.ai/download[/dim]"
+            )
             return False
 
         else:
@@ -116,10 +120,11 @@ def start_ollama_service() -> bool:
                     ["ollama", "serve"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    start_new_session=True
+                    start_new_session=True,
                 )
                 console.print("[dim]Waiting for Ollama to start...[/dim]")
                 import time
+
                 time.sleep(3)  # Give it a few seconds to start
 
                 if check_ollama_available():
@@ -203,7 +208,7 @@ def list_models(show_recommended: bool = True) -> None:
     for model in models:
         name = model["name"]
         base_name = name.split(":")[0]
-        size_gb = model["size"] / (1024 ** 3)
+        size_gb = model["size"] / (1024**3)
         status = "✓ Installed"
         if show_recommended and base_name in RECOMMENDED_MODELS:
             status += " (Recommended)"
@@ -236,6 +241,7 @@ def get_selected_model() -> str:
 
     # 2. Check config.yaml
     from mind_map.core.config import load_config
+
     config = load_config()
     processing_config = config.get("processing_llm", {})
     config_model = processing_config.get("model")
@@ -266,6 +272,7 @@ def set_processing_model(model_name: str, persist: bool = False) -> bool:
     if persist:
         try:
             import yaml
+
             # Resolved from the package location, never the cwd: a relative
             # path here would create/overwrite a stray config.yaml wherever
             # the process happens to be running.
@@ -407,6 +414,7 @@ def ensure_model_available(
     # Determine auto_pull behavior from config if not specified
     if auto_pull is None:
         from mind_map.core.config import load_config
+
         config = load_config()
         processing_config = config.get("processing_llm", {})
         auto_pull = processing_config.get("auto_pull", False)
@@ -502,6 +510,7 @@ def get_ollama_llm(
 
     try:
         from langchain_ollama import ChatOllama
+
         return ChatOllama(model=model, temperature=0.1)
     except ImportError:
         console.print("[red]langchain-ollama not installed[/red]")
@@ -610,6 +619,7 @@ def _try_cloud_processing_llm(
                 continue
             try:
                 from langchain_google_genai import ChatGoogleGenerativeAI
+
                 gemini_llm = ChatGoogleGenerativeAI(
                     model="gemini-2.0-flash",
                     google_api_key=api_key,
@@ -631,6 +641,7 @@ def _try_cloud_processing_llm(
                 continue
             try:
                 from langchain_anthropic import ChatAnthropic
+
                 anthropic_llm = ChatAnthropic(
                     model="claude-haiku-4-5-20251001",
                     api_key=api_key,
@@ -652,6 +663,7 @@ def _try_cloud_processing_llm(
                 continue
             try:
                 from langchain_openai import ChatOpenAI
+
                 openai_llm = ChatOpenAI(
                     model="gpt-4o-mini",
                     api_key=api_key,
@@ -741,9 +753,7 @@ def detect_processing_provider() -> tuple[str, str]:
         # Deliberately NOT part of the "auto" chain: auto keeps its documented
         # gemini → anthropic → openai → ollama order. Reported even without a key,
         # mirroring the other explicit-cloud-provider branches below.
-        return "commandcode", processing_config.get(
-            "model", "deepseek/deepseek-v4.1-flash"
-        )
+        return "commandcode", processing_config.get("model", "deepseek/deepseek-v4.1-flash")
 
     # For auto or specific cloud provider, check what's available
     if provider in ("auto", "gemini"):

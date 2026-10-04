@@ -6,6 +6,7 @@ Both ``mind_map.app.cli.main`` (Typer commands) and ``mind_map.mcp.server``
 
 Goal: one source of truth so CLI and MCP cannot drift.
 """
+
 from __future__ import annotations
 
 import math
@@ -124,9 +125,7 @@ def resolve_default_memo_target() -> MemoTarget:
             model=os.getenv("MIND_MAP_LLM_MODEL")
             or os.getenv("MIND_MAP_DEEPSEEK_MODEL")  # legacy alias, pre-CommandCode
             or "deepseek/deepseek-v4.1-flash",
-            base_url=os.getenv(
-                "MIND_MAP_LLM_BASE_URL", "https://api.commandcode.ai/provider/v1"
-            ),
+            base_url=os.getenv("MIND_MAP_LLM_BASE_URL", "https://api.commandcode.ai/provider/v1"),
             api_key=commandcode_key,
         )
     minimax_key = os.getenv("MINIMAX_API_KEY")
@@ -272,9 +271,9 @@ def ask_question(
     query: str,
     store: GraphStore,
     *,
-    depth: int = 2,                  # unused, kept for CLI parity
-    model: str | None = None,        # processing LLM override for back_feed path
-    back_feed: bool = False,         # CLI ask always back-feeds; MCP defaults off
+    depth: int = 2,  # unused, kept for CLI parity
+    model: str | None = None,  # processing LLM override for back_feed path
+    back_feed: bool = False,  # CLI ask always back-feeds; MCP defaults off
 ) -> dict[str, Any]:
     """Run a RAG query against the graph, optionally back-feeding the Q&A.
 
@@ -303,9 +302,7 @@ def ask_question(
     if not llm:
         if nodes:
             bullets = "\n".join(f"- {n.document[:200]}..." for n in nodes)
-            response = (
-                "Reasoning LLM not available. Raw context:\n" + bullets
-            )
+            response = "Reasoning LLM not available. Raw context:\n" + bullets
             status = "no_llm"
         else:
             response = "Reasoning LLM not available and no relevant context found."
@@ -349,11 +346,13 @@ def ask_question(
         if success and qa_node_ids and nodes:
             qa_concept_id = qa_node_ids[0]
             for context_node in nodes:
-                store.add_edge(Edge(
-                    source=qa_concept_id,
-                    target=context_node.id,
-                    relation_type="derived_from",
-                ))
+                store.add_edge(
+                    Edge(
+                        source=qa_concept_id,
+                        target=context_node.id,
+                        relation_type="derived_from",
+                    )
+                )
 
     return {
         "response": response,
@@ -378,9 +377,7 @@ def graph_stats(store: GraphStore) -> dict[str, Any]:
     return store.get_stats()
 
 
-def format_stats_text(
-    stats: dict[str, Any], *, workspace_id: str = "default"
-) -> str:
+def format_stats_text(stats: dict[str, Any], *, workspace_id: str = "default") -> str:
     """Format a stats dict as the MCP ``mind_map_stats`` text block.
 
     This exact format is locked by test contracts:
@@ -476,8 +473,7 @@ def prune_graph(
         if not tag_edges:
             continue
         all_connected_to_prune = all(
-            (e.target if e.source == tag_id else e.source) in prune_ids
-            for e in tag_edges
+            (e.target if e.source == tag_id else e.source) in prune_ids for e in tag_edges
         )
         if all_connected_to_prune:
             tags_to_remove.add(tag_id)
@@ -495,11 +491,13 @@ def prune_graph(
         node_id = all_data["ids"][idx]
         doc = all_data["documents"][idx] if all_data["documents"] else ""
         meta = all_data["metadatas"][idx] if all_data["metadatas"] else {}
-        deleted_nodes_info.append({
-            "id": node_id,
-            "document": doc,
-            "type": meta.get("type", "unknown"),
-        })
+        deleted_nodes_info.append(
+            {
+                "id": node_id,
+                "document": doc,
+                "type": meta.get("type", "unknown"),
+            }
+        )
 
     deleted_tags_info: list[dict[str, str]] = []
     for tag_id in tags_to_remove:
@@ -596,15 +594,17 @@ def report_graph(store: GraphStore) -> dict[str, Any]:
                     n_doc = neighbors["documents"][j] if neighbors["documents"] else ""
                     tags.append(n_doc)
 
-        top_nodes.append({
-            "id": node_id,
-            "document": doc,
-            "type": meta.get("type", "unknown"),
-            "importance_score": round(importance, 4),
-            "connection_count": meta.get("connection_count", 0),
-            "edges": edge_list,
-            "tags": tags,
-        })
+        top_nodes.append(
+            {
+                "id": node_id,
+                "document": doc,
+                "type": meta.get("type", "unknown"),
+                "importance_score": round(importance, 4),
+                "connection_count": meta.get("connection_count", 0),
+                "edges": edge_list,
+                "tags": tags,
+            }
+        )
 
     return {"summary": summary, "top_nodes": top_nodes}
 
@@ -769,7 +769,8 @@ def health_check(
             integration["similarity_search"] = {
                 "status": "pass" if found else "fail",
                 "details": (
-                    "Node inserted, queried, and cleaned up" if found
+                    "Node inserted, queried, and cleaned up"
+                    if found
                     else "Query did not return test node"
                 ),
             }
@@ -794,9 +795,7 @@ def health_check(
                 "Health check memo ingestion test for Python programming concepts "
                 f"{uuid.uuid4().hex[:12]}"
             )
-            success, message, node_ids = ingest_memo(
-                text=test_text, store=int_store, llm=None
-            )
+            success, message, node_ids = ingest_memo(text=test_text, store=int_store, llm=None)
             for nid in node_ids:
                 int_store.delete_edges_for_node(nid)
                 int_store.delete_node(nid)

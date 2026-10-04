@@ -32,6 +32,7 @@ def client(temp_data_dir: Path, mock_store: GraphStore):
     """Create a TestClient with a mocked get_store that returns our temp store."""
     with patch("mind_map.app.api.routes.get_store", return_value=mock_store):
         from mind_map.app.api.routes import app
+
         with TestClient(app) as test_client:
             yield test_client
 
@@ -73,9 +74,7 @@ class TestAskRoute:
             ),
             patch(
                 "mind_map.rag.response_generator.ResponseGenerator",
-                return_value=MagicMock(
-                    generate=AsyncMock(return_value="Generated answer")
-                ),
+                return_value=MagicMock(generate=AsyncMock(return_value="Generated answer")),
             ),
             patch(
                 "mind_map.app.pipeline.ingest_memo_internal",
@@ -137,9 +136,15 @@ class TestDeleteNode:
         mock_store.add_node("node_2", "Neighbor 2", NodeType.ENTITY)
         mock_store.add_node("node_3", "Neighbor 3", NodeType.CONCEPT)
 
-        mock_store.add_edge(Edge(source="node_center", target="node_1", weight=1.0, relation_type="tagged_as"))
-        mock_store.add_edge(Edge(source="node_center", target="node_2", weight=0.8, relation_type="related_to"))
-        mock_store.add_edge(Edge(source="node_3", target="node_center", weight=1.0, relation_type="related_to"))
+        mock_store.add_edge(
+            Edge(source="node_center", target="node_1", weight=1.0, relation_type="tagged_as")
+        )
+        mock_store.add_edge(
+            Edge(source="node_center", target="node_2", weight=0.8, relation_type="related_to")
+        )
+        mock_store.add_edge(
+            Edge(source="node_3", target="node_center", weight=1.0, relation_type="related_to")
+        )
 
         # Act
         response = client.delete("/node/node_center")
@@ -222,7 +227,9 @@ class TestDeleteNode:
         node_id = "entity_/users/gwansun/desktop/projects/ontologist"
         mock_store.add_node(node_id, "/Users/gwansun/Desktop/projects/ontologist", NodeType.ENTITY)
 
-        response = client.delete("/node/entity_%2Fusers%2Fgwansun%2Fdesktop%2Fprojects%2Fontologist")
+        response = client.delete(
+            "/node/entity_%2Fusers%2Fgwansun%2Fdesktop%2Fprojects%2Fontologist"
+        )
 
         assert response.status_code == 200
         assert response.json()["node_id"] == node_id
@@ -356,7 +363,9 @@ class TestStats:
         mock_store.add_node("entity", "An entity", NodeType.ENTITY)
         mock_store.add_node("tag", "#tag", NodeType.TAG)
         mock_store.add_edge(Edge(source="concept", target="entity", weight=1.0))
-        mock_store.add_edge(Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as"))
+        mock_store.add_edge(
+            Edge(source="concept", target="tag", weight=1.0, relation_type="tagged_as")
+        )
 
         response = client.get("/stats")
         assert response.status_code == 200

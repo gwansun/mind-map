@@ -3,6 +3,7 @@
 Supports explicit memo targets resolved by the CLI.
 When a target is set, that exact model path is used; on failure the memo is rejected.
 """
+
 from __future__ import annotations
 
 from mind_map.core.schemas import FilterDecision, GraphNode
@@ -26,6 +27,7 @@ RETRIEVED CONCEPT CANDIDATES:
 
 Respond ONLY with a JSON object with keys: action (one of: new, duplicate, discard), reason (string), summary (string or null).
 """
+
 
 def _format_retrieved_concepts(concepts: list[GraphNode]) -> str:
     if not concepts:
@@ -99,8 +101,17 @@ class FilterAgent:
     ) -> FilterDecision:
         """Simple non-LLM novelty filter (final fallback)."""
         trivial_patterns = [
-            "hello", "hi", "thanks", "thank you", "ok", "okay",
-            "yes", "no", "sure", "bye", "goodbye",
+            "hello",
+            "hi",
+            "thanks",
+            "thank you",
+            "ok",
+            "okay",
+            "yes",
+            "no",
+            "sure",
+            "bye",
+            "goodbye",
         ]
         lower_text = text.lower().strip()
 

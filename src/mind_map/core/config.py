@@ -54,6 +54,7 @@ def get_data_dir(explicit: Path | None = None) -> Path:
     Priority: explicit argument -> MIND_MAP_DATA_DIR env var -> DEFAULT_DATA_DIR
     """
     import os
+
     if explicit is not None:
         return explicit.expanduser().resolve()
     env_dir = os.getenv("MIND_MAP_DATA_DIR")

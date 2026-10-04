@@ -5,6 +5,7 @@ Typer commands and the MCP FastMCP tools must satisfy. Each test calls a
 service function directly (no CLI invocation, no MCP server), so the contract
 is enforced regardless of which surface a caller uses.
 """
+
 from __future__ import annotations
 
 import os
@@ -45,8 +46,12 @@ def seeded_store() -> tuple[GraphStore, str]:
         store.add_node("entity2", "Entity Two", NodeType.ENTITY)
 
         store.add_edge(Edge(source="anchor", target="tag1", weight=3.0, relation_type="tagged_as"))
-        store.add_edge(Edge(source="anchor", target="entity1", weight=2.0, relation_type="mentions"))
-        store.add_edge(Edge(source="anchor", target="entity2", weight=1.0, relation_type="related_to"))
+        store.add_edge(
+            Edge(source="anchor", target="entity1", weight=2.0, relation_type="mentions")
+        )
+        store.add_edge(
+            Edge(source="anchor", target="entity2", weight=1.0, relation_type="related_to")
+        )
         yield store, tmpdir
 
 
@@ -178,10 +183,13 @@ class TestMemoIngest:
     def test_deepseek_default_target(self, temp_store: GraphStore):
         """Default path resolves the CommandCode LocalTarget when its key is set."""
         env = {"COMMANDCODE_API_KEY": "sk-env-deepseek"}
-        with patch.dict(os.environ, env, clear=True), patch(
-            "mind_map.app.pipeline.ingest_memo_cli",
-            return_value=(True, "Created 2 nodes", ["n1", "n2"]),
-        ) as mock_ingest:
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(
+                "mind_map.app.pipeline.ingest_memo_cli",
+                return_value=(True, "Created 2 nodes", ["n1", "n2"]),
+            ) as mock_ingest,
+        ):
             success, message, node_ids = services.memo_ingest(
                 "a memo", temp_store, source="test-source"
             )
@@ -263,20 +271,17 @@ class TestAskQuestion:
         # ResponseGenerator is lazy-imported inside ask_question; patch at the
         # source module to intercept the import.
         fake_response = "Generated answer text"
-        with patch(
-            "mind_map.rag.response_generator.ResponseGenerator"
-        ) as mock_gen, patch(
-            "mind_map.rag.reasoning_llm.get_reasoning_llm",
-            return_value="fake-llm",
+        with (
+            patch("mind_map.rag.response_generator.ResponseGenerator") as mock_gen,
+            patch(
+                "mind_map.rag.reasoning_llm.get_reasoning_llm",
+                return_value="fake-llm",
+            ),
         ):
             mock_gen.return_value.generate_sync.return_value = fake_response
-            with patch(
-                "mind_map.app.services.ingest_memo_internal"
-            ) as mock_internal:
+            with patch("mind_map.app.services.ingest_memo_internal") as mock_internal:
                 before_count = temp_store.collection.count()
-                result = services.ask_question(
-                    "question?", temp_store, back_feed=False
-                )
+                result = services.ask_question("question?", temp_store, back_feed=False)
                 after_count = temp_store.collection.count()
 
                 assert result["status"] == "answered"
@@ -290,11 +295,12 @@ class TestAskQuestion:
         temp_store.add_node("ctx1", "context for question", NodeType.CONCEPT)
 
         fake_response = "Generated answer"
-        with patch(
-            "mind_map.rag.response_generator.ResponseGenerator"
-        ) as mock_gen, patch(
-            "mind_map.rag.reasoning_llm.get_reasoning_llm",
-            return_value="fake-llm",
+        with (
+            patch("mind_map.rag.response_generator.ResponseGenerator") as mock_gen,
+            patch(
+                "mind_map.rag.reasoning_llm.get_reasoning_llm",
+                return_value="fake-llm",
+            ),
         ):
             mock_gen.return_value.generate_sync.return_value = fake_response
             with patch(
@@ -302,9 +308,7 @@ class TestAskQuestion:
                 return_value=(True, "ok", ["qa_node_1"]),
             ) as mock_internal:
                 before = temp_store.collection.count()
-                result = services.ask_question(
-                    "q?", temp_store, back_feed=True
-                )
+                result = services.ask_question("q?", temp_store, back_feed=True)
                 after = temp_store.collection.count()
                 mock_internal.assert_called_once()
                 assert result["qa_node_ids"] == ["qa_node_1"]
@@ -340,8 +344,11 @@ class TestFormatStatsText:
 
     def test_header_uses_workspace(self):
         stats = {
-            "total_nodes": 5, "total_edges": 3,
-            "concept_nodes": 2, "entity_nodes": 1, "tag_nodes": 2,
+            "total_nodes": 5,
+            "total_edges": 3,
+            "concept_nodes": 2,
+            "entity_nodes": 1,
+            "tag_nodes": 2,
             "avg_connections": 1.2,
         }
         out = services.format_stats_text(stats, workspace_id="alice")
@@ -349,8 +356,11 @@ class TestFormatStatsText:
 
     def test_default_workspace(self):
         stats = {
-            "total_nodes": 0, "total_edges": 0,
-            "concept_nodes": 0, "entity_nodes": 0, "tag_nodes": 0,
+            "total_nodes": 0,
+            "total_edges": 0,
+            "concept_nodes": 0,
+            "entity_nodes": 0,
+            "tag_nodes": 0,
             "avg_connections": 0,
         }
         out = services.format_stats_text(stats)
@@ -360,8 +370,11 @@ class TestFormatStatsText:
 
     def test_all_six_metrics_present(self):
         stats = {
-            "total_nodes": 1, "total_edges": 2,
-            "concept_nodes": 1, "entity_nodes": 0, "tag_nodes": 0,
+            "total_nodes": 1,
+            "total_edges": 2,
+            "concept_nodes": 1,
+            "entity_nodes": 0,
+            "tag_nodes": 0,
             "avg_connections": 4.0,
         }
         out = services.format_stats_text(stats, workspace_id="ws")
@@ -497,8 +510,13 @@ class TestReportGraph:
         result = services.report_graph(temp_store)
         assert set(result.keys()) == {"summary", "top_nodes"}
         assert set(result["summary"].keys()) == {
-            "workspace", "total_nodes", "total_edges",
-            "concepts", "entities", "tags", "avg_connections",
+            "workspace",
+            "total_nodes",
+            "total_edges",
+            "concepts",
+            "entities",
+            "tags",
+            "avg_connections",
         }
 
     def test_top_node_shape(self, temp_store: GraphStore):
@@ -506,8 +524,13 @@ class TestReportGraph:
         result = services.report_graph(temp_store)
         node = result["top_nodes"][0]
         assert set(node.keys()) == {
-            "id", "document", "type", "importance_score",
-            "connection_count", "edges", "tags",
+            "id",
+            "document",
+            "type",
+            "importance_score",
+            "connection_count",
+            "edges",
+            "tags",
         }
         assert node["type"] == "concept"
 
@@ -538,12 +561,17 @@ class TestHealthCheck:
     """Tests for health_check JSON structure (matches MCP health contract)."""
 
     def test_top_level_keys(self, temp_store: GraphStore):
-        with patch(
-            "mind_map.processor.processing_llm.check_ollama_available",
-            return_value=False,
-        ), patch(
-            "mind_map.rag.llm_status.get_llm_status",
-            return_value={"processing_llm": {"status": "offline", "provider": "x", "model": "y"}},
+        with (
+            patch(
+                "mind_map.processor.processing_llm.check_ollama_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.llm_status.get_llm_status",
+                return_value={
+                    "processing_llm": {"status": "offline", "provider": "x", "model": "y"}
+                },
+            ),
         ):
             result = services.health_check(temp_store, workspace_id="default")
         assert set(result.keys()) == {"status", "checks", "timestamp", "workspace"}
@@ -552,12 +580,17 @@ class TestHealthCheck:
         assert result["status"] in ("healthy", "degraded", "unhealthy")
 
     def test_checks_sections(self, temp_store: GraphStore):
-        with patch(
-            "mind_map.processor.processing_llm.check_ollama_available",
-            return_value=False,
-        ), patch(
-            "mind_map.rag.llm_status.get_llm_status",
-            return_value={"processing_llm": {"status": "offline", "provider": "x", "model": "y"}},
+        with (
+            patch(
+                "mind_map.processor.processing_llm.check_ollama_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.llm_status.get_llm_status",
+                return_value={
+                    "processing_llm": {"status": "offline", "provider": "x", "model": "y"}
+                },
+            ),
         ):
             result = services.health_check(temp_store, workspace_id="default")
         checks = result["checks"]
@@ -574,24 +607,34 @@ class TestHealthCheck:
 
     def test_integration_tests_clean_up(self, temp_store: GraphStore):
         before = temp_store.collection.count()
-        with patch(
-            "mind_map.processor.processing_llm.check_ollama_available",
-            return_value=False,
-        ), patch(
-            "mind_map.rag.llm_status.get_llm_status",
-            return_value={"processing_llm": {"status": "offline", "provider": "x", "model": "y"}},
+        with (
+            patch(
+                "mind_map.processor.processing_llm.check_ollama_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.llm_status.get_llm_status",
+                return_value={
+                    "processing_llm": {"status": "offline", "provider": "x", "model": "y"}
+                },
+            ),
         ):
             services.health_check(temp_store, workspace_id="default")
         after = temp_store.collection.count()
         assert after == before
 
     def test_workspace_in_result(self, temp_store: GraphStore):
-        with patch(
-            "mind_map.processor.processing_llm.check_ollama_available",
-            return_value=False,
-        ), patch(
-            "mind_map.rag.llm_status.get_llm_status",
-            return_value={"processing_llm": {"status": "offline", "provider": "x", "model": "y"}},
+        with (
+            patch(
+                "mind_map.processor.processing_llm.check_ollama_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.llm_status.get_llm_status",
+                return_value={
+                    "processing_llm": {"status": "offline", "provider": "x", "model": "y"}
+                },
+            ),
         ):
             result = services.health_check(temp_store, workspace_id="alice")
         assert result["workspace"] == "alice"
@@ -600,16 +643,22 @@ class TestHealthCheck:
         """The memo_ingestion integration test calls services.ingest_memo.
         If a test patches `mind_map.mcp.server.ingest_memo`, the patch must
         take effect. We verify the alias path is honored."""
-        with patch(
-            "mind_map.processor.processing_llm.check_ollama_available",
-            return_value=False,
-        ), patch(
-            "mind_map.rag.llm_status.get_llm_status",
-            return_value={"processing_llm": {"status": "offline", "provider": "x", "model": "y"}},
-        ), patch(
-            "mind_map.app.services.ingest_memo",
-            return_value=(True, "ok", ["n1"]),
-        ) as mock_alias:
+        with (
+            patch(
+                "mind_map.processor.processing_llm.check_ollama_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.llm_status.get_llm_status",
+                return_value={
+                    "processing_llm": {"status": "offline", "provider": "x", "model": "y"}
+                },
+            ),
+            patch(
+                "mind_map.app.services.ingest_memo",
+                return_value=(True, "ok", ["n1"]),
+            ) as mock_alias,
+        ):
             result = services.health_check(temp_store, workspace_id="default")
         mock_alias.assert_called()
         assert result["checks"]["integration_tests"]["memo_ingestion"]["status"] == "pass"

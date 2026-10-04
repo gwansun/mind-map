@@ -65,9 +65,15 @@ class FilterDecision(BaseModel):
 class RetrievalContext(BaseModel):
     """Retrieved context used by the memo pipeline."""
 
-    concepts: list[GraphNode] = Field(default_factory=list, description="Retrieved concept candidates")
-    entities: list[GraphNode] = Field(default_factory=list, description="First-hop retrieved entity references")
-    tags: list[GraphNode] = Field(default_factory=list, description="First-hop retrieved tag references")
+    concepts: list[GraphNode] = Field(
+        default_factory=list, description="Retrieved concept candidates"
+    )
+    entities: list[GraphNode] = Field(
+        default_factory=list, description="First-hop retrieved entity references"
+    )
+    tags: list[GraphNode] = Field(
+        default_factory=list, description="First-hop retrieved tag references"
+    )
 
 
 class ExtractionResult(BaseModel):

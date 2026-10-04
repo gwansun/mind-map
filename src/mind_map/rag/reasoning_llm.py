@@ -147,9 +147,7 @@ class ClaudeCLILLM(BaseChatModel):
             response_text = result.stdout.strip()
 
             return ChatResult(
-                generations=[
-                    ChatGeneration(message=AIMessage(content=response_text))
-                ]
+                generations=[ChatGeneration(message=AIMessage(content=response_text))]
             )
 
         except subprocess.TimeoutExpired:
@@ -252,9 +250,7 @@ class MiniMaxChatLLM(BaseChatModel):
     ) -> ChatResult:
         """Generate response via direct MiniMax API call."""
         if not self.api_key:
-            raise RuntimeError(
-                "MINIMAX_API_KEY not set. Set it in your environment or .env file."
-            )
+            raise RuntimeError("MINIMAX_API_KEY not set. Set it in your environment or .env file.")
 
         try:
             import requests
@@ -307,11 +303,7 @@ class MiniMaxChatLLM(BaseChatModel):
         # Strip <think> tags (M-series models wrap reasoning in them)
         response_text = _strip_think_tags(response_text)
 
-        return ChatResult(
-            generations=[
-                ChatGeneration(message=AIMessage(content=response_text))
-            ]
-        )
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=response_text))])
 
 
 def check_minimax_api_available() -> bool:
@@ -440,11 +432,7 @@ class DeepSeekChatLLM(BaseChatModel):
         if not response_text:
             raise RuntimeError("CommandCode returned empty content")
 
-        return ChatResult(
-            generations=[
-                ChatGeneration(message=AIMessage(content=response_text))
-            ]
-        )
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=response_text))])
 
 
 def check_deepseek_available() -> bool:
@@ -455,9 +443,7 @@ def check_deepseek_available() -> bool:
     return bool(os.getenv("COMMANDCODE_API_KEY"))
 
 
-def get_deepseek_llm(
-    model: str | None = None, timeout: int = 120
-) -> Any:
+def get_deepseek_llm(model: str | None = None, timeout: int = 120) -> Any:
     """Get DeepSeek Direct LLM for response generation.
 
     Returns DeepSeekChatLLM instance or None if API key not configured.
@@ -491,7 +477,9 @@ def get_gemini_llm(model: str = "gemini-1.5-pro", temperature: float = 0.7) -> A
     """
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        console.print("[yellow]GOOGLE_API_KEY not set. Cannot use Gemini for response generation.[/yellow]")
+        console.print(
+            "[yellow]GOOGLE_API_KEY not set. Cannot use Gemini for response generation.[/yellow]"
+        )
         return None
 
     try:
@@ -523,7 +511,9 @@ def get_anthropic_llm(model: str = "claude-sonnet-4-5-20250929", temperature: fl
     """
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        console.print("[yellow]ANTHROPIC_API_KEY not set. Cannot use Claude for response generation.[/yellow]")
+        console.print(
+            "[yellow]ANTHROPIC_API_KEY not set. Cannot use Claude for response generation.[/yellow]"
+        )
         return None
 
     try:
@@ -555,7 +545,9 @@ def get_openai_llm(model: str = "gpt-4o", temperature: float = 0.7) -> Any:
     """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        console.print("[yellow]OPENAI_API_KEY not set. Cannot use OpenAI for response generation.[/yellow]")
+        console.print(
+            "[yellow]OPENAI_API_KEY not set. Cannot use OpenAI for response generation.[/yellow]"
+        )
         return None
 
     try:
