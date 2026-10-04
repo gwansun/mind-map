@@ -21,7 +21,9 @@ class GraphStore:
         self.data_dir = data_dir
         self.chroma_path = data_dir / "chroma"
         self.sqlite_path = data_dir / "edges.db"
-        self._chroma_client: chromadb.ClientAPI | None = None
+        # chromadb does not export ClientAPI in its public typing, so the client
+        # handle stays Any rather than a name mypy cannot resolve.
+        self._chroma_client: Any = None
         self._collection: chromadb.Collection | None = None
         self._sqlite_conn: sqlite3.Connection | None = None
 
@@ -106,11 +108,14 @@ class GraphStore:
             original_source_id=source_id,
         )
 
+        # chromadb accepts Sequence[Sequence[float]], which a plain
+        # list[list[float]] fails on through invariance; pass the payload as Any.
+        embedding_payload: Any = [embedding] if embedding else None
         self.collection.add(
             ids=[node_id],
             documents=[document],
             metadatas=[self._serialize_metadata(metadata)],
-            embeddings=[embedding] if embedding else None,
+            embeddings=embedding_payload,
         )
 
         return GraphNode(id=node_id, document=document, metadata=metadata, embedding=embedding)
@@ -139,7 +144,8 @@ class GraphStore:
 
         result = self.collection.get(ids=[node_id], include=["metadatas"])
         if result["metadatas"]:
-            metadata = result["metadatas"][0]
+            # chroma types these entries as read-only Mappings; copy before mutating.
+            metadata = dict(result["metadatas"][0])
             metadata["connection_count"] = count
             self.collection.update(ids=[node_id], metadatas=[metadata])
 
@@ -165,13 +171,10 @@ class GraphStore:
         if embeddings is not None and len(embeddings) > 0:
             embedding = list(embeddings[0]) if embeddings[0] is not None else None
 
+        documents = result.get("documents") or []
         return GraphNode(
             id=result["ids"][0],
-            document=(
-                result["documents"][0]
-                if result.get("documents") and result["documents"][0] is not None
-                else ""
-            ),
+            document=(documents[0] if documents and documents[0] is not None else ""),
             metadata=metadata,
             embedding=embedding,
         )
@@ -276,8 +279,11 @@ class GraphStore:
                 include=["documents", "metadatas", "distances"],
             )
         else:
+            # See add_node: chroma's Sequence[Sequence[float]] parameter trips list
+            # invariance, so the payload is passed as Any.
+            query_payload: Any = [query]
             results = self.collection.query(
-                query_embeddings=[query],
+                query_embeddings=query_payload,
                 n_results=n_results,
                 include=["documents", "metadatas", "distances"],
             )
@@ -285,17 +291,17 @@ class GraphStore:
         if not results["ids"] or not results["ids"][0]:
             return []
 
+        # chroma omits unrequested keys and types the ones it returns as optional.
+        metadatas = results.get("metadatas") or []
+        documents = results.get("documents") or []
+
         nodes: list[GraphNode] = []
         for i, node_id in enumerate(results["ids"][0]):
             distance = results["distances"][0][i] if results["distances"] else 0.0
             if distance > max_distance:
                 continue
 
-            metadata_dict = (
-                results["metadatas"][0][i]
-                if results.get("metadatas") and results["metadatas"][0]
-                else None
-            )
+            metadata_dict = metadatas[0][i] if metadatas and metadatas[0] else None
             metadata = (
                 NodeMetadata(**metadata_dict)
                 if metadata_dict
@@ -305,11 +311,7 @@ class GraphStore:
 
             node = GraphNode(
                 id=node_id,
-                document=(
-                    results["documents"][0][i]
-                    if results.get("documents") and results["documents"][0][i] is not None
-                    else ""
-                ),
+                document=(documents[0][i] if documents and documents[0][i] is not None else ""),
                 metadata=metadata,
             )
             nodes.append(node)
@@ -398,11 +400,14 @@ class GraphStore:
         if not result["ids"]:
             return
 
-        for node_id, metadata in zip(result["ids"], result["metadatas"], strict=False):
+        metadatas = result.get("metadatas") or []
+        for node_id, metadata in zip(result["ids"], metadatas, strict=False):
             if metadata is None:
                 continue
-            metadata["importance_score"] = self.calculate_importance(node_id)
-            self.collection.update(ids=[node_id], metadatas=[metadata])
+            # chroma types these entries as read-only Mappings; persist a copy.
+            updated = dict(metadata)
+            updated["importance_score"] = self.calculate_importance(node_id)
+            self.collection.update(ids=[node_id], metadatas=[updated])
 
     def delete_node(self, node_id: str) -> DeleteNodeResult:
         """Delete a node and, for concept deletes, its first-layer tag neighbors."""
@@ -466,7 +471,7 @@ class GraphStore:
         concept_nodes = 0
         tag_nodes = 0
         entity_nodes = 0
-        for metadata in result["metadatas"]:
+        for metadata in result.get("metadatas") or []:
             if not metadata:
                 continue
             node_type = metadata.get("type")
