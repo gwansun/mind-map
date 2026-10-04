@@ -130,9 +130,8 @@ class TestClaudeCLILLM:
         with patch(
             "mind_map.rag.reasoning_llm.subprocess.run",
             side_effect=subprocess.TimeoutExpired("claude", 1),
-        ):
-            with pytest.raises(RuntimeError, match="timed out"):
-                llm._generate([HumanMessage(content="Hi")])
+        ), pytest.raises(RuntimeError, match="timed out"):
+            llm._generate([HumanMessage(content="Hi")])
 
     def test_generate_cli_error(self):
         """Should raise RuntimeError on CLI error."""
@@ -160,9 +159,8 @@ class TestClaudeCLILLM:
         with patch(
             "mind_map.rag.reasoning_llm.subprocess.run",
             side_effect=FileNotFoundError(),
-        ):
-            with pytest.raises(RuntimeError, match="Claude CLI not found"):
-                llm._generate([HumanMessage(content="Hi")])
+        ), pytest.raises(RuntimeError, match="Claude CLI not found"):
+            llm._generate([HumanMessage(content="Hi")])
 
 
 class TestGetClaudeCLILLM:

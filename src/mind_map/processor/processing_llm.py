@@ -69,7 +69,7 @@ def install_ollama() -> bool:
                 stdout=subprocess.PIPE,
                 check=True,
             )
-            result = subprocess.run(
+            subprocess.run(
                 ["sh", "-c", "curl -fsSL https://ollama.ai/install.sh | sh"],
                 check=True,
                 capture_output=True,

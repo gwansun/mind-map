@@ -147,38 +147,36 @@ class TestMemoIngest:
         with patch(
             "mind_map.processor.cli_executor.resolve_local_model",
             return_value="mlx-community/test",
-        ):
-            with patch(
-                # services.memo_ingest lazy-imports from pipeline
-                "mind_map.app.pipeline.ingest_memo_cli",
-                return_value=(True, "Created 1 nodes", ["n1"]),
-            ) as mock_ingest:
-                success, message, node_ids = services.memo_ingest(
-                    "hello world", temp_store, local=""
-                )
-                assert success is True
-                assert node_ids == ["n1"]
-                target = mock_ingest.call_args.kwargs["target"]
-                assert target.model == "mlx-community/test"
+        ), patch(
+            # services.memo_ingest lazy-imports from pipeline
+            "mind_map.app.pipeline.ingest_memo_cli",
+            return_value=(True, "Created 1 nodes", ["n1"]),
+        ) as mock_ingest:
+            success, message, node_ids = services.memo_ingest(
+                "hello world", temp_store, local=""
+            )
+            assert success is True
+            assert node_ids == ["n1"]
+            target = mock_ingest.call_args.kwargs["target"]
+            assert target.model == "mlx-community/test"
 
     def test_minimax_target_with_env_key(self, temp_store: GraphStore):
         # MINIMAX is now the LEGACY fallback — ensure DeepSeek key (default)
         # isn't picked up from .env so we exercise the fallback path.
         env = {k: v for k, v in os.environ.items() if k != "COMMANDCODE_API_KEY"}
         env["MINIMAX_API_KEY"] = "sk-env-key"
-        with patch.dict(os.environ, env, clear=True):
-            with patch(
-                # services.memo_ingest lazy-imports from pipeline
-                "mind_map.app.pipeline.ingest_memo_cli",
-                return_value=(True, "Created 2 nodes", ["n1", "n2"]),
-            ) as mock_ingest:
-                success, message, node_ids = services.memo_ingest(
-                    "a memo", temp_store, source="test-source"
-                )
-                target = mock_ingest.call_args.kwargs["target"]
-                assert isinstance(target, MiniMaxTarget)
-                assert target.api_key == "sk-env-key"
-                assert mock_ingest.call_args.kwargs["source_id"] == "test-source"
+        with patch.dict(os.environ, env, clear=True), patch(
+            # services.memo_ingest lazy-imports from pipeline
+            "mind_map.app.pipeline.ingest_memo_cli",
+            return_value=(True, "Created 2 nodes", ["n1", "n2"]),
+        ) as mock_ingest:
+            success, message, node_ids = services.memo_ingest(
+                "a memo", temp_store, source="test-source"
+            )
+            target = mock_ingest.call_args.kwargs["target"]
+            assert isinstance(target, MiniMaxTarget)
+            assert target.api_key == "sk-env-key"
+            assert mock_ingest.call_args.kwargs["source_id"] == "test-source"
 
     def test_deepseek_default_target(self, temp_store: GraphStore):
         """Default path resolves the CommandCode LocalTarget when its key is set."""
@@ -307,9 +305,7 @@ class TestAskQuestion:
                 "mind_map.app.services.ingest_memo_internal",
                 return_value=(True, "ok", ["qa_node_1"]),
             ) as mock_internal:
-                before = temp_store.collection.count()
                 result = services.ask_question("q?", temp_store, back_feed=True)
-                after = temp_store.collection.count()
                 mock_internal.assert_called_once()
                 assert result["qa_node_ids"] == ["qa_node_1"]
 

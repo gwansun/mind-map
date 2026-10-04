@@ -60,10 +60,7 @@ def get_store(workspace_id: str | None = None) -> GraphStore:
 
     if ws_id not in stores:
         # If workspace_id is provided, create a subfolder under DEFAULT_DATA_DIR
-        if ws_id == "default":
-            path = DEFAULT_DATA_DIR
-        else:
-            path = DEFAULT_DATA_DIR / "workspaces" / ws_id
+        path = DEFAULT_DATA_DIR if ws_id == "default" else DEFAULT_DATA_DIR / "workspaces" / ws_id
 
         store = GraphStore(path)
         store.initialize()

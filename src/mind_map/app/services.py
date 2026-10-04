@@ -9,6 +9,7 @@ Goal: one source of truth so CLI and MCP cannot drift.
 
 from __future__ import annotations
 
+import contextlib
 import math
 import os
 import uuid
@@ -588,7 +589,7 @@ def report_graph(store: GraphStore) -> dict[str, Any]:
             neighbors = store.collection.get(
                 ids=list(connected_tag_ids), include=["metadatas", "documents"]
             )
-            for j, nid in enumerate(neighbors["ids"]):
+            for j, _nid in enumerate(neighbors["ids"]):
                 n_meta = neighbors["metadatas"][j] if neighbors["metadatas"] else {}
                 if n_meta.get("type") == NodeType.TAG.value:
                     n_doc = neighbors["documents"][j] if neighbors["documents"] else ""
@@ -775,10 +776,8 @@ def health_check(
                 ),
             }
         except Exception as e:
-            try:
+            with contextlib.suppress(Exception):
                 int_store.delete_node(test_id)
-            except Exception:
-                pass
             integration["similarity_search"] = {
                 "status": "fail",
                 "details": str(e),

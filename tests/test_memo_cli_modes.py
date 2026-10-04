@@ -49,19 +49,18 @@ class TestMemoCliModes:
             with patch(
                 "mind_map.processor.cli_executor.resolve_local_model",
                 return_value="mlx-community/gemma-4-e4b-it-4bit",
-            ):
-                with patch(
-                    "mind_map.app.pipeline.ingest_memo_cli",
-                    return_value=(True, "Created 1 nodes", ["n1"]),
-                ) as mock_ingest:
-                    result = runner.invoke(
-                        app,
-                        ["memo", "hello world long enough", "--data-dir", tmpdir, "--local", ""],
-                    )
-                    assert result.exit_code == 0
-                    target = mock_ingest.call_args.kwargs["target"]
-                    assert target.model == "mlx-community/gemma-4-e4b-it-4bit"
-                    assert target.base_url == "http://127.0.0.1:11435/v1"
+            ), patch(
+                "mind_map.app.pipeline.ingest_memo_cli",
+                return_value=(True, "Created 1 nodes", ["n1"]),
+            ) as mock_ingest:
+                result = runner.invoke(
+                    app,
+                    ["memo", "hello world long enough", "--data-dir", tmpdir, "--local", ""],
+                )
+                assert result.exit_code == 0
+                target = mock_ingest.call_args.kwargs["target"]
+                assert target.model == "mlx-community/gemma-4-e4b-it-4bit"
+                assert target.base_url == "http://127.0.0.1:11435/v1"
 
     def test_local_uses_explicit_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

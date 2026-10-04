@@ -54,9 +54,8 @@ def get_llm_status() -> dict[str, Any]:
     elif reasoning_provider == "anthropic":
         if check_anthropic_available():
             reasoning_status = "online"
-    elif reasoning_provider == "openai":
-        if check_openai_available():
-            reasoning_status = "online"
+    elif reasoning_provider == "openai" and check_openai_available():
+        reasoning_status = "online"
 
     return {
         "processing_llm": {

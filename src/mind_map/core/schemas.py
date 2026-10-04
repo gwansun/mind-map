@@ -92,7 +92,7 @@ class ExtractionResult(BaseModel):
         """Drop any relationship the LLM returned that isn't exactly [source, relation, target]."""
         if not isinstance(v, list):
             return []
-        return [r for r in v if isinstance(r, (list, tuple)) and len(r) == 3]
+        return [r for r in v if isinstance(r, list | tuple) and len(r) == 3]
 
 
 class QueryResult(BaseModel):
