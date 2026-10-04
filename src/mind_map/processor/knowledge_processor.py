@@ -12,31 +12,11 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 
 from mind_map.core.schemas import ExtractionResult, GraphNode
 from mind_map.processor.cli_executor import MemoTarget, build_cli_template
 
 logger = __import__("logging").getLogger(__name__)
-
-EXTRACTION_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """JSON-ONLY MODE: Respond with ONLY a raw JSON object. No prose. No markdown. No explanation.
-
-Extract only from NEW TEXT.
-REFERENCE ENTITIES/TAGS are optional grounding hints only.
-Do not copy unsupported facts from references.
-Do not treat references as newly introduced facts unless NEW TEXT supports them.
-
-Required keys:
-- summary (string, 1-2 sentences)
-- tags (array of #hashtag strings)
-- entities (array of entity name strings)
-- relationships (array of [subject, predicate, object] arrays)
-
-Example valid response:
-{"summary":"Test","tags":["#test"],"entities":["X"],"relationships":[]}"""),
-    ("human", "NEW TEXT:\n{text}\n\nREFERENCE ENTITIES/TAGS:\n{references}"),
-])
 
 _REFERENCE_CONTEXT_TEMPLATE = """EXTRACT JSON from the NEW text below. Respond with ONLY raw JSON. No text before or after.
 
