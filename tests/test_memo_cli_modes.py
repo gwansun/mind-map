@@ -1,6 +1,7 @@
 """CLI tests for memo local-mode selection and explicit target resolution."""
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -9,6 +10,19 @@ from typer.testing import CliRunner
 
 from mind_map.app.cli.main import app
 from mind_map.rag.graph_store import GraphStore
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(text: str) -> str:
+    """Return captured CLI output with rich's ANSI styling removed.
+
+    rich styles individual runs, so a token like "--local" can be emitted as
+    "-" followed by "-local" split across escape sequences, and it emits color
+    only when the runner enables it. Assertions must not depend on that.
+    """
+    return _ANSI_ESCAPE.sub("", text)
+
 
 runner = CliRunner()
 
@@ -25,7 +39,7 @@ class TestMemoCliModes:
             with patch.dict(os.environ, {}, clear=True):
                 result = runner.invoke(app, ["memo", "hello world", "--data-dir", tmpdir])
                 assert result.exit_code == 1
-                assert "COMMANDCODE_API_KEY" in result.stdout
+                assert "COMMANDCODE_API_KEY" in plain(result.stdout)
 
     def test_rejects_openclaw_option(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -35,13 +49,13 @@ class TestMemoCliModes:
                 ["memo", "hello world", "--data-dir", tmpdir, "--openclaw", "minimax"],
             )
             assert result.exit_code != 0
-            assert "No such option: --openclaw" in result.stdout
+            assert "No such option: --openclaw" in plain(result.stdout)
 
     def test_help_lists_only_local_option_for_memo(self) -> None:
         result = runner.invoke(app, ["memo", "--help"])
         assert result.exit_code == 0
-        assert "--local" in result.stdout
-        assert "--openclaw" not in result.stdout
+        assert "--local" in plain(result.stdout)
+        assert "--openclaw" not in plain(result.stdout)
 
     def test_local_resolves_first_model_when_omitted(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

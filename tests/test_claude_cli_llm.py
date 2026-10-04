@@ -86,7 +86,7 @@ class TestClaudeCLILLM:
 
         from mind_map.rag.reasoning_llm import ClaudeCLILLM
 
-        llm = ClaudeCLILLM(model="sonnet")
+        llm = ClaudeCLILLM(model="sonnet", claude_path="/usr/local/bin/claude")
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Hello! How can I help you today?"
@@ -101,7 +101,7 @@ class TestClaudeCLILLM:
 
         from mind_map.rag.reasoning_llm import ClaudeCLILLM
 
-        llm = ClaudeCLILLM(model="sonnet")
+        llm = ClaudeCLILLM(model="sonnet", claude_path="/usr/local/bin/claude")
         mock_result = MagicMock()
         mock_result.returncode = 0
         mock_result.stdout = "Response"
@@ -127,7 +127,7 @@ class TestClaudeCLILLM:
 
         from mind_map.rag.reasoning_llm import ClaudeCLILLM
 
-        llm = ClaudeCLILLM(model="sonnet", timeout=1)
+        llm = ClaudeCLILLM(model="sonnet", timeout=1, claude_path="/usr/local/bin/claude")
 
         with (
             patch(
@@ -144,7 +144,7 @@ class TestClaudeCLILLM:
 
         from mind_map.rag.reasoning_llm import ClaudeCLILLM
 
-        llm = ClaudeCLILLM(model="sonnet")
+        llm = ClaudeCLILLM(model="sonnet", claude_path="/usr/local/bin/claude")
         mock_result = MagicMock()
         mock_result.returncode = 1
         mock_result.stderr = "Authentication failed"
@@ -161,7 +161,7 @@ class TestClaudeCLILLM:
 
         from mind_map.rag.reasoning_llm import ClaudeCLILLM
 
-        llm = ClaudeCLILLM(model="sonnet")
+        llm = ClaudeCLILLM(model="sonnet", claude_path="/usr/local/bin/claude")
 
         with (
             patch(
