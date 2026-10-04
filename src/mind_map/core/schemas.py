@@ -88,7 +88,7 @@ class ExtractionResult(BaseModel):
 
     @field_validator("relationships", mode="before")
     @classmethod
-    def filter_relationships(cls, v: list) -> list:
+    def filter_relationships(cls, v: list[object]) -> list[object]:
         """Drop any relationship the LLM returned that isn't exactly [source, relation, target]."""
         if not isinstance(v, list):
             return []

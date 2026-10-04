@@ -241,7 +241,7 @@ def retrieve_context(
 
     nodes = store.enrich_context_nodes(nodes)
 
-    connected_context: dict[str, list] = {}
+    connected_context: dict[str, list[Any]] = {}
     if show_context:
         node_ids = [n.id for n in nodes]
         connected_context = store.get_connected_context(node_ids)

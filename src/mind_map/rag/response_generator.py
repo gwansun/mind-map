@@ -106,7 +106,7 @@ class ResponseGenerator:
         else:
             # No context - answer directly (new topic for KG)
             result = await self.chain_no_context.ainvoke({"query": query})
-        return result.content
+        return str(result.content)
 
     def generate_sync(self, query: str, nodes: list[GraphNode]) -> str:
         """Synchronous version of generate.
@@ -125,4 +125,4 @@ class ResponseGenerator:
         else:
             # No context - answer directly (new topic for KG)
             result = self.chain_no_context.invoke({"query": query})
-        return result.content
+        return str(result.content)

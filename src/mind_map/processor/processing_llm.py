@@ -245,7 +245,7 @@ def get_selected_model() -> str:
     config = load_config()
     processing_config = config.get("processing_llm", {})
     config_model = processing_config.get("model")
-    if config_model:
+    if isinstance(config_model, str) and config_model:
         return config_model
 
     # 3. Fall back to default

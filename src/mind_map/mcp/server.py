@@ -201,7 +201,7 @@ def mind_map_ask(
         )
         # Return the response as plain text (no JSON wrapping). Caller can
         # inspect context_nodes via retrieve if they want structured data.
-        return result["response"]
+        return str(result["response"])
     except Exception as e:
         return f"Error answering question: {str(e)}"
 

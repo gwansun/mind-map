@@ -114,6 +114,7 @@ def resolve_local_model(
     ):
         raise CLIExecutionError(f"Invalid local model entry returned by {models_url}")
 
+    assert isinstance(first["id"], str)  # narrowed by the check above
     return first["id"].strip()
 
 
@@ -294,7 +295,8 @@ def run_cli_json(
         return None
 
     try:
-        return json.loads(content, strict=False)
+        parsed: dict[str, Any] = json.loads(content, strict=False)
+        return parsed
     except json.JSONDecodeError:
         pass
 
@@ -302,20 +304,23 @@ def run_cli_json(
         if content.startswith(fence):
             trimmed = content[len(fence) :].strip()
             try:
-                return json.loads(trimmed, strict=False)
+                fenced: dict[str, Any] = json.loads(trimmed, strict=False)
+                return fenced
             except json.JSONDecodeError:
                 pass
 
     content_clean = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", content)
     try:
-        return json.loads(content_clean, strict=False)
+        cleaned: dict[str, Any] = json.loads(content_clean, strict=False)
+        return cleaned
     except json.JSONDecodeError:
         pass
 
     bounds = _find_json_bounds(content)
     if bounds is not None:
         try:
-            return json.loads(content[bounds[0] : bounds[1]], strict=False)
+            bounded: dict[str, Any] = json.loads(content[bounds[0] : bounds[1]], strict=False)
+            return bounded
         except json.JSONDecodeError:
             pass
 
