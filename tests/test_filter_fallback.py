@@ -3,17 +3,15 @@
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from mind_map.app.pipeline import (
-    PipelineState,
     build_legacy_ingestion_pipeline,
-    create_filter_node_legacy,
     ingest_memo_internal,
 )
-from mind_map.core.schemas import FilterDecision, NodeType, RetrievalContext
+from mind_map.core.schemas import FilterDecision, NodeType
 from mind_map.processor.cli_executor import CLIExecutionError, MiniMaxTarget
 from mind_map.processor.filter_agent import FilterAgent, _format_retrieved_concepts
 from mind_map.rag.graph_store import GraphStore
@@ -41,7 +39,9 @@ class TestFilterAgent:
         agent = FilterAgent(target=MiniMaxTarget(api_key="sk-test-for-filter"))
 
         with patch("mind_map.processor.filter_agent._run_custom_filter") as mock_run:
-            mock_run.return_value = FilterDecision(action="new", reason="target result", summary="test")
+            mock_run.return_value = FilterDecision(
+                action="new", reason="target result", summary="test"
+            )
             decision = agent.evaluate_sync("Python is great", [])
 
             assert decision.action == "new"

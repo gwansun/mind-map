@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from mind_map.core.schemas import (
     Edge,
@@ -49,7 +51,9 @@ def _heuristic_filter(text: str, retrieved_concepts: list[GraphNode]) -> FilterD
     lower_text = text.lower().strip()
 
     if len(text.strip()) < 10:
-        return FilterDecision(action="discard", reason="Text too short (< 10 characters)", summary=None)
+        return FilterDecision(
+            action="discard", reason="Text too short (< 10 characters)", summary=None
+        )
 
     if lower_text in trivial_patterns:
         return FilterDecision(action="discard", reason="Trivial/greeting message", summary=None)
@@ -66,7 +70,7 @@ def _heuristic_filter(text: str, retrieved_concepts: list[GraphNode]) -> FilterD
     return FilterDecision(action="new", reason="Content appears substantive and new", summary=text)
 
 
-def create_retrieval_node(store: GraphStore):
+def create_retrieval_node(store: GraphStore) -> Callable[[PipelineState], dict[str, Any]]:
     """Retrieve similar concepts and their first-hop entity/tag neighbors."""
 
     def retrieval_node(state: PipelineState) -> dict[str, Any]:
@@ -83,7 +87,7 @@ def create_retrieval_node(store: GraphStore):
     return retrieval_node
 
 
-def create_filter_node(*, target: MemoTarget):
+def create_filter_node(*, target: MemoTarget) -> Callable[[PipelineState], dict[str, Any]]:
     """Create a filter node that decides discard/duplicate/new for strict memo CLI flow."""
     agent = FilterAgent(target=target)
 
@@ -111,7 +115,7 @@ def create_filter_node(*, target: MemoTarget):
     return filter_node
 
 
-def create_extraction_node(*, target: MemoTarget):
+def create_extraction_node(*, target: MemoTarget) -> Callable[[PipelineState], dict[str, Any]]:
     """Create an extraction node for strict memo CLI flow."""
 
     def extraction_node(state: PipelineState) -> dict[str, Any]:
@@ -145,7 +149,7 @@ def create_extraction_node(*, target: MemoTarget):
     return extraction_node
 
 
-def create_filter_node_legacy():
+def create_filter_node_legacy() -> Callable[[PipelineState], dict[str, Any]]:
     """Filter node for internal non-CLI ingestion paths."""
 
     def filter_node(state: PipelineState) -> dict[str, Any]:
@@ -182,7 +186,9 @@ def _llm_extraction(
         return _heuristic_extraction(text)
 
 
-def create_extraction_node_legacy(llm: Any | None = None):
+def create_extraction_node_legacy(
+    llm: Any | None = None,
+) -> Callable[[PipelineState], dict[str, Any]]:
     """Extraction node for internal non-CLI ingestion paths.
 
     With an ``llm`` the node summarises through the paid LLM route (summary,
@@ -235,14 +241,18 @@ def _heuristic_extraction(text: str) -> dict[str, Any]:
     }
 
 
-def create_storage_node(store: GraphStore):
+def create_storage_node(store: GraphStore) -> Callable[[PipelineState], dict[str, Any]]:
     """Persist new memo extraction results to GraphStore."""
 
     def _normalize_text(text: str) -> str:
         return " ".join(text.lower().split())
 
     def storage_node(state: PipelineState) -> dict[str, Any]:
-        if state.extraction is None or state.filter_decision is None or state.filter_decision.action != "new":
+        if (
+            state.extraction is None
+            or state.filter_decision is None
+            or state.filter_decision.action != "new"
+        ):
             return {}
 
         node_ids: list[str] = []
@@ -303,7 +313,9 @@ def create_storage_node(store: GraphStore):
 
         if state.retrieval is not None:
             for concept in state.retrieval.concepts:
-                store.add_edge(Edge(source=concept_id, target=concept.id, relation_type="related_context"))
+                store.add_edge(
+                    Edge(source=concept_id, target=concept.id, relation_type="related_context")
+                )
 
             mention_text = _normalize_text(f"{state.raw_text}\n{extraction.summary}")
 
@@ -315,7 +327,9 @@ def create_storage_node(store: GraphStore):
                 if tag_node.id in linked_tag_ids:
                     continue
                 if tag_key in mention_text:
-                    store.add_edge(Edge(source=concept_id, target=tag_node.id, relation_type="tagged_as"))
+                    store.add_edge(
+                        Edge(source=concept_id, target=tag_node.id, relation_type="tagged_as")
+                    )
                     linked_tag_ids.add(tag_node.id)
 
             for entity_node in state.retrieval.entities:
@@ -325,7 +339,9 @@ def create_storage_node(store: GraphStore):
                 if entity_node.id in linked_entity_ids:
                     continue
                 if entity_key in mention_text:
-                    store.add_edge(Edge(source=concept_id, target=entity_node.id, relation_type="mentions"))
+                    store.add_edge(
+                        Edge(source=concept_id, target=entity_node.id, relation_type="mentions")
+                    )
                     linked_entity_ids.add(entity_node.id)
 
         return {"node_ids": node_ids}
@@ -348,7 +364,7 @@ def build_memo_cli_ingestion_pipeline(
     store: GraphStore,
     *,
     target: MemoTarget,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Build the strict memo CLI ingestion pipeline."""
     workflow = StateGraph(PipelineState)
 
@@ -377,7 +393,7 @@ def build_legacy_ingestion_pipeline(
     store: GraphStore,
     *,
     llm: Any | None = None,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Build the internal non-CLI ingestion pipeline."""
     workflow = StateGraph(PipelineState)
 

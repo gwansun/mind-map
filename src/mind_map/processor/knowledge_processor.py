@@ -18,7 +18,8 @@ from mind_map.processor.cli_executor import MemoTarget, build_cli_template
 
 logger = __import__("logging").getLogger(__name__)
 
-_REFERENCE_CONTEXT_TEMPLATE = """EXTRACT JSON from the NEW text below. Respond with ONLY raw JSON. No text before or after.
+_REFERENCE_CONTEXT_TEMPLATE = (
+    """EXTRACT JSON from the NEW text below. Respond with ONLY raw JSON. No text before or after.
 
 NEW TEXT:
 {text}
@@ -28,6 +29,7 @@ REFERENCE ENTITIES/TAGS (optional grounding hints only, not facts to copy):
 
 Required keys: summary, tags, entities, relationships
 Extract only what is supported by NEW TEXT."""
+)
 
 
 def _build_reference_context(reference_nodes: list[GraphNode]) -> str:
@@ -73,7 +75,8 @@ def _call_custom_extraction(
 
     Raises CLIExecutionError on failure (caller should reject the memo).
     """
-    from mind_map.processor.cli_executor import run_extraction_cli, CLIExecutionError
+    from mind_map.processor.cli_executor import run_extraction_cli
+
     return run_extraction_cli(cli_template, prompt)
 
 
@@ -90,7 +93,9 @@ class KnowledgeProcessor:
         self._target = target
         self._parser = JsonOutputParser(pydantic_object=ExtractionResult)
 
-    def _parse_extraction_result(self, raw: dict[str, Any], *, fallback_text: str) -> ExtractionResult:
+    def _parse_extraction_result(
+        self, raw: dict[str, Any], *, fallback_text: str
+    ) -> ExtractionResult:
         summary = raw.get("summary", "")
         if not isinstance(summary, str) or not summary.strip():
             summary = fallback_text.strip()
