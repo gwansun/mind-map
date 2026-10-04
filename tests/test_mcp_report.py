@@ -242,24 +242,26 @@ class TestReportWorkspace:
     """Tests for multi-workspace support."""
 
     def test_custom_workspace_in_summary(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
-                result = json.loads(_report(workspace_id="alice"))
-                assert result["summary"]["workspace"] == "alice"
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
+        ):
+            result = json.loads(_report(workspace_id="alice"))
+            assert result["summary"]["workspace"] == "alice"
 
     def test_separate_workspaces_isolated(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
-                # Add data to workspace "alice"
-                alice_store = get_store("alice")
-                _add_concept(alice_store, "a1", "Alice concept")
-
-                # Workspace "bob" should be empty
-                result_bob = json.loads(_report(workspace_id="bob"))
-                assert result_bob["summary"]["total_nodes"] == 0
-
-                result_alice = json.loads(_report(workspace_id="alice"))
-                assert result_alice["summary"]["total_nodes"] == 1
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            # Add data to workspace "alice"
+            patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
+        ):
+            alice_store = get_store("alice")
+            _add_concept(alice_store, "a1", "Alice concept")
+            # Workspace "bob" should be empty
+            result_bob = json.loads(_report(workspace_id="bob"))
+            assert result_bob["summary"]["total_nodes"] == 0
+            result_alice = json.loads(_report(workspace_id="alice"))
+            assert result_alice["summary"]["total_nodes"] == 1
 
 
 class TestReportJsonStructure:

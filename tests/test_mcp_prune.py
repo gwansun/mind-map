@@ -266,32 +266,35 @@ class TestPruneWorkspace:
     """Tests for multi-workspace isolation."""
 
     def test_prune_uses_specified_workspace(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
-                alice_store = get_store("alice")
-                _add_concept(alice_store, "a1", "Alice concept")
-
-                result = json.loads(_prune(workspace_id="alice"))
-                assert len(result["deleted_nodes"]) == 1
-                assert result["deleted_nodes"][0]["id"] == "a1"
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
+        ):
+            alice_store = get_store("alice")
+            _add_concept(alice_store, "a1", "Alice concept")
+            result = json.loads(_prune(workspace_id="alice"))
+            assert len(result["deleted_nodes"]) == 1
+            assert result["deleted_nodes"][0]["id"] == "a1"
 
     def test_prune_does_not_affect_other_workspace(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
-                alice_store = get_store("alice")
-                bob_store = get_store("bob")
-                _add_concept(alice_store, "a1", "Alice concept")
-                _add_concept(bob_store, "b1", "Bob concept")
-
-                _prune(workspace_id="alice")
-                # Bob's data should be untouched
-                assert bob_store.get_node("b1") is not None
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
+        ):
+            alice_store = get_store("alice")
+            bob_store = get_store("bob")
+            _add_concept(alice_store, "a1", "Alice concept")
+            _add_concept(bob_store, "b1", "Bob concept")
+            _prune(workspace_id="alice")
+            # Bob's data should be untouched
+            assert bob_store.get_node("b1") is not None
 
     def test_prune_summary_includes_workspace_name(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)):
-                ws_store = get_store("myspace")
-                _add_concept(ws_store, "c1", "Concept")
-
-                result = json.loads(_prune(workspace_id="myspace"))
-                assert "myspace" in result["summary"]
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
+        ):
+            ws_store = get_store("myspace")
+            _add_concept(ws_store, "c1", "Concept")
+            result = json.loads(_prune(workspace_id="myspace"))
+            assert "myspace" in result["summary"]

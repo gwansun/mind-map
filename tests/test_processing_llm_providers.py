@@ -67,13 +67,16 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}), patch.dict(
-            "sys.modules",
-            {
-                "langchain_google_genai": MagicMock(
-                    ChatGoogleGenerativeAI=MagicMock(return_value=mock_llm)
-                )
-            },
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}),
+            patch.dict(
+                "sys.modules",
+                {
+                    "langchain_google_genai": MagicMock(
+                        ChatGoogleGenerativeAI=MagicMock(return_value=mock_llm)
+                    )
+                },
+            ),
         ):
             llm, provider = _try_cloud_processing_llm("auto")
             assert provider == "gemini"
@@ -84,9 +87,12 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), patch.dict(
-            "sys.modules",
-            {"langchain_anthropic": MagicMock(ChatAnthropic=MagicMock(return_value=mock_llm))},
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}),
+            patch.dict(
+                "sys.modules",
+                {"langchain_anthropic": MagicMock(ChatAnthropic=MagicMock(return_value=mock_llm))},
+            ),
         ):
             llm, provider = _try_cloud_processing_llm("auto")
             assert provider == "anthropic"
@@ -97,9 +103,12 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}), patch.dict(
-            "sys.modules",
-            {"langchain_openai": MagicMock(ChatOpenAI=MagicMock(return_value=mock_llm))},
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}),
+            patch.dict(
+                "sys.modules",
+                {"langchain_openai": MagicMock(ChatOpenAI=MagicMock(return_value=mock_llm))},
+            ),
         ):
             llm, provider = _try_cloud_processing_llm("auto")
             assert provider == "openai"
@@ -110,22 +119,25 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_gemini = MagicMock()
-        with patch.dict(
-            os.environ,
-            {
-                "GOOGLE_API_KEY": "gkey",
-                "ANTHROPIC_API_KEY": "akey",
-            },
-        ), patch.dict(
-            "sys.modules",
-            {
-                "langchain_google_genai": MagicMock(
-                    ChatGoogleGenerativeAI=MagicMock(return_value=mock_gemini)
-                ),
-                "langchain_anthropic": MagicMock(
-                    ChatAnthropic=MagicMock(return_value=MagicMock())
-                ),
-            },
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GOOGLE_API_KEY": "gkey",
+                    "ANTHROPIC_API_KEY": "akey",
+                },
+            ),
+            patch.dict(
+                "sys.modules",
+                {
+                    "langchain_google_genai": MagicMock(
+                        ChatGoogleGenerativeAI=MagicMock(return_value=mock_gemini)
+                    ),
+                    "langchain_anthropic": MagicMock(
+                        ChatAnthropic=MagicMock(return_value=MagicMock())
+                    ),
+                },
+            ),
         ):
             llm, provider = _try_cloud_processing_llm("auto")
             assert provider == "gemini"
@@ -135,19 +147,22 @@ class TestTryCloudProcessingLLM:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_anthropic = MagicMock()
-        with patch.dict(
-            os.environ,
-            {
-                "GOOGLE_API_KEY": "gkey",
-                "ANTHROPIC_API_KEY": "akey",
-            },
-        ), patch.dict(
-            "sys.modules",
-            {
-                "langchain_anthropic": MagicMock(
-                    ChatAnthropic=MagicMock(return_value=mock_anthropic)
-                ),
-            },
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "GOOGLE_API_KEY": "gkey",
+                    "ANTHROPIC_API_KEY": "akey",
+                },
+            ),
+            patch.dict(
+                "sys.modules",
+                {
+                    "langchain_anthropic": MagicMock(
+                        ChatAnthropic=MagicMock(return_value=mock_anthropic)
+                    ),
+                },
+            ),
         ):
             llm, provider = _try_cloud_processing_llm("anthropic")
             assert provider == "anthropic"
@@ -190,42 +205,50 @@ class TestDetectProcessingProvider:
         from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "ollama", "model": "mistral"}}
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                provider, model = detect_processing_provider()
-                assert provider == "ollama"
-                assert model == "mistral"
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+        ):
+            provider, model = detect_processing_provider()
+            assert provider == "ollama"
+            assert model == "mistral"
 
     def test_auto_provider_with_google_key(self, _clean_env):
         """auto provider with GOOGLE_API_KEY should detect gemini."""
         from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                provider, model = detect_processing_provider()
-                assert provider == "gemini"
-                assert model == "gemini-2.0-flash"
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+        ):
+            provider, model = detect_processing_provider()
+            assert provider == "gemini"
+            assert model == "gemini-2.0-flash"
 
     def test_auto_provider_with_anthropic_key(self, _clean_env):
         """auto provider with ANTHROPIC_API_KEY should detect anthropic."""
         from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
-        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "akey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                provider, model = detect_processing_provider()
-                assert provider == "anthropic"
+        with (
+            patch.dict(os.environ, {"ANTHROPIC_API_KEY": "akey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+        ):
+            provider, model = detect_processing_provider()
+            assert provider == "anthropic"
 
     def test_auto_provider_with_openai_key(self, _clean_env):
         """auto provider with OPENAI_API_KEY should detect openai."""
         from mind_map.processor.processing_llm import detect_processing_provider
 
         config = {"processing_llm": {"provider": "auto", "model": "phi3.5"}}
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "okey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                provider, model = detect_processing_provider()
-                assert provider == "openai"
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "okey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+        ):
+            provider, model = detect_processing_provider()
+            assert provider == "openai"
 
     def test_auto_provider_no_keys_falls_back_to_ollama(self, _clean_env):
         """auto provider with no API keys should fall back to ollama."""
@@ -278,18 +301,18 @@ class TestGetProcessingLLM:
             }
         }
         mock_ollama_llm = MagicMock()
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                with patch(
-                    "mind_map.processor.processing_llm._try_cloud_processing_llm"
-                ) as mock_cloud:
-                    with patch(
-                        "mind_map.processor.processing_llm._get_ollama_processing_llm",
-                        return_value=mock_ollama_llm,
-                    ):
-                        llm = get_processing_llm()
-                        mock_cloud.assert_not_called()
-                        assert llm is mock_ollama_llm
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch("mind_map.processor.processing_llm._try_cloud_processing_llm") as mock_cloud,
+            patch(
+                "mind_map.processor.processing_llm._get_ollama_processing_llm",
+                return_value=mock_ollama_llm,
+            ),
+        ):
+            llm = get_processing_llm()
+            mock_cloud.assert_not_called()
+            assert llm is mock_ollama_llm
 
     def test_auto_provider_tries_cloud_first(self, _clean_env):
         """provider=auto should try cloud first."""
@@ -303,9 +326,12 @@ class TestGetProcessingLLM:
             }
         }
         mock_cloud_llm = MagicMock()
-        with patch(LOAD_CONFIG_PATCH, return_value=config), patch(
-            "mind_map.processor.processing_llm._try_cloud_processing_llm",
-            return_value=(mock_cloud_llm, "gemini"),
+        with (
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch(
+                "mind_map.processor.processing_llm._try_cloud_processing_llm",
+                return_value=(mock_cloud_llm, "gemini"),
+            ),
         ):
             llm = get_processing_llm()
             assert llm is mock_cloud_llm
@@ -322,12 +348,16 @@ class TestGetProcessingLLM:
             }
         }
         mock_ollama_llm = MagicMock()
-        with patch(LOAD_CONFIG_PATCH, return_value=config), patch(
-            "mind_map.processor.processing_llm._try_cloud_processing_llm",
-            return_value=(None, None),
-        ), patch(
-            "mind_map.processor.processing_llm._get_ollama_processing_llm",
-            return_value=mock_ollama_llm,
+        with (
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch(
+                "mind_map.processor.processing_llm._try_cloud_processing_llm",
+                return_value=(None, None),
+            ),
+            patch(
+                "mind_map.processor.processing_llm._get_ollama_processing_llm",
+                return_value=mock_ollama_llm,
+            ),
         ):
             llm = get_processing_llm()
             assert llm is mock_ollama_llm
@@ -344,12 +374,16 @@ class TestGetProcessingLLM:
             }
         }
         mock_ollama_llm = MagicMock()
-        with patch(LOAD_CONFIG_PATCH, return_value=config), patch(
-            "mind_map.processor.processing_llm._try_cloud_processing_llm",
-            return_value=(None, None),
-        ), patch(
-            "mind_map.processor.processing_llm._get_ollama_processing_llm",
-            return_value=mock_ollama_llm,
+        with (
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch(
+                "mind_map.processor.processing_llm._try_cloud_processing_llm",
+                return_value=(None, None),
+            ),
+            patch(
+                "mind_map.processor.processing_llm._get_ollama_processing_llm",
+                return_value=mock_ollama_llm,
+            ),
         ):
             llm = get_processing_llm()
             assert llm is mock_ollama_llm
@@ -369,12 +403,16 @@ class TestGetLLMStatus:
             "processing_llm": {"provider": "auto", "model": "phi3.5"},
             "reasoning_llm": {"provider": "claude-cli"},
         }
-        with patch(LOAD_CONFIG_PATCH, return_value=config), patch(
-            "mind_map.rag.llm_status.check_ollama_available",
-            return_value=True,
-        ), patch(
-            "mind_map.rag.llm_status.check_claude_cli_available",
-            return_value=False,
+        with (
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch(
+                "mind_map.rag.llm_status.check_ollama_available",
+                return_value=True,
+            ),
+            patch(
+                "mind_map.rag.llm_status.check_claude_cli_available",
+                return_value=False,
+            ),
         ):
             status = get_llm_status()
             assert status["processing_llm"]["provider"] == "ollama"
@@ -389,20 +427,22 @@ class TestGetLLMStatus:
             "processing_llm": {"provider": "auto", "model": "phi3.5"},
             "reasoning_llm": {"provider": "claude-cli"},
         }
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                with patch(
-                    "mind_map.rag.llm_status.check_gemini_available",
-                    return_value=True,
-                ):
-                    with patch(
-                        "mind_map.rag.llm_status.check_claude_cli_available",
-                        return_value=False,
-                    ):
-                        status = get_llm_status()
-                        assert status["processing_llm"]["provider"] == "gemini"
-                        assert status["processing_llm"]["model"] == "gemini-2.0-flash"
-                        assert status["processing_llm"]["status"] == "online"
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch(
+                "mind_map.rag.llm_status.check_gemini_available",
+                return_value=True,
+            ),
+            patch(
+                "mind_map.rag.llm_status.check_claude_cli_available",
+                return_value=False,
+            ),
+        ):
+            status = get_llm_status()
+            assert status["processing_llm"]["provider"] == "gemini"
+            assert status["processing_llm"]["model"] == "gemini-2.0-flash"
+            assert status["processing_llm"]["status"] == "online"
 
     def test_reports_ollama_explicit_provider(self, _clean_env):
         """Should report ollama when provider is explicitly set to ollama."""
@@ -412,20 +452,22 @@ class TestGetLLMStatus:
             "processing_llm": {"provider": "ollama", "model": "mistral"},
             "reasoning_llm": {"provider": "claude-cli"},
         }
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}):
-            with patch(LOAD_CONFIG_PATCH, return_value=config):
-                with patch(
-                    "mind_map.rag.llm_status.check_ollama_available",
-                    return_value=False,
-                ):
-                    with patch(
-                        "mind_map.rag.llm_status.check_claude_cli_available",
-                        return_value=False,
-                    ):
-                        status = get_llm_status()
-                        assert status["processing_llm"]["provider"] == "ollama"
-                        assert status["processing_llm"]["model"] == "mistral"
-                        assert status["processing_llm"]["status"] == "offline"
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey"}),
+            patch(LOAD_CONFIG_PATCH, return_value=config),
+            patch(
+                "mind_map.rag.llm_status.check_ollama_available",
+                return_value=False,
+            ),
+            patch(
+                "mind_map.rag.llm_status.check_claude_cli_available",
+                return_value=False,
+            ),
+        ):
+            status = get_llm_status()
+            assert status["processing_llm"]["provider"] == "ollama"
+            assert status["processing_llm"]["model"] == "mistral"
+            assert status["processing_llm"]["status"] == "offline"
 
     def test_reports_deepseek_online_when_key_present(self):
         from mind_map.rag.llm_status import get_llm_status
@@ -440,13 +482,15 @@ class TestGetLLMStatus:
         # (`from mind_map.core.config import load_config`), so patch the
         # llm_status-local binding — LOAD_CONFIG_PATCH (the config-module
         # attribute) does not rebind it.
-        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}):
-            with patch("mind_map.rag.llm_status.load_config", return_value=config):
-                with patch(
-                    "mind_map.rag.llm_status.check_ollama_available",
-                    return_value=False,
-                ):
-                    status = get_llm_status()
+        with (
+            patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}),
+            patch("mind_map.rag.llm_status.load_config", return_value=config),
+            patch(
+                "mind_map.rag.llm_status.check_ollama_available",
+                return_value=False,
+            ),
+        ):
+            status = get_llm_status()
         assert status["reasoning_llm"]["provider"] == "deepseek"
         assert status["reasoning_llm"]["status"] == "online"
 
@@ -792,12 +836,16 @@ class TestCommandCodeProcessingProvider:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_llm = MagicMock()
-        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "test-key"}), patch(
-            "mind_map.processor.processing_llm._validate_cloud_llm",
-            return_value=True,
-        ), patch(
-            "mind_map.rag.reasoning_llm.get_deepseek_llm",
-            return_value=mock_llm,
+        with (
+            patch.dict(os.environ, {"COMMANDCODE_API_KEY": "test-key"}),
+            patch(
+                "mind_map.processor.processing_llm._validate_cloud_llm",
+                return_value=True,
+            ),
+            patch(
+                "mind_map.rag.reasoning_llm.get_deepseek_llm",
+                return_value=mock_llm,
+            ),
         ):
             llm, provider = _try_cloud_processing_llm("commandcode")
         assert provider == "commandcode"
@@ -820,16 +868,18 @@ class TestCommandCodeProcessingProvider:
         from mind_map.processor.processing_llm import _try_cloud_processing_llm
 
         mock_gemini = MagicMock()
-        with patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey", "COMMANDCODE_API_KEY": "cckey"}):
-            with patch.dict(
+        with (
+            patch.dict(os.environ, {"GOOGLE_API_KEY": "gkey", "COMMANDCODE_API_KEY": "cckey"}),
+            patch.dict(
                 "sys.modules",
                 {
                     "langchain_google_genai": MagicMock(
                         ChatGoogleGenerativeAI=MagicMock(return_value=mock_gemini)
                     )
                 },
-            ):
-                llm, provider = _try_cloud_processing_llm("auto")
+            ),
+        ):
+            llm, provider = _try_cloud_processing_llm("auto")
         assert provider == "gemini"
         assert llm is mock_gemini
 
@@ -857,10 +907,12 @@ class TestCommandCodeProcessingProvider:
             },
             "reasoning_llm": {"provider": "deepseek"},
         }
-        with patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}):
+        with (
+            patch.dict(os.environ, {"COMMANDCODE_API_KEY": "sk-test"}),
+            patch("mind_map.rag.llm_status.load_config", return_value=config),
+        ):
             # llm_status binds load_config at module import; patch that binding.
-            with patch("mind_map.rag.llm_status.load_config", return_value=config):
-                status = get_llm_status()
+            status = get_llm_status()
         assert status["processing_llm"]["provider"] == "commandcode"
         assert status["processing_llm"]["status"] == "online"
 

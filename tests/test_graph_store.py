@@ -208,7 +208,8 @@ class TestGetConnectedContext:
         result = temp_store.get_connected_context(["node_anchor"])
         ordered_ids = [neighbor.id for neighbor, _ in result["node_anchor"]]
 
-        # Highest weight first => node_c, then among equal weight higher importance => node_a, then node_b
+        # Highest weight first => node_c, then among equal weight higher importance
+        # => node_a, then node_b
         assert ordered_ids == ["node_c", "node_a", "node_b"]
 
 
@@ -304,7 +305,8 @@ class TestDeleteNodeTypeAware:
         assert temp_store.get_node("tag2") is None
 
     def test_concept_delete_shared_tags_are_deleted_too(self, temp_store: GraphStore):
-        """Shared tags — connected to multiple concepts — are still deleted when one concept is deleted."""
+        """Shared tags — connected to multiple concepts — are still deleted when one
+        concept is deleted."""
         temp_store.add_node("concept1", "Concept 1", NodeType.CONCEPT)
         temp_store.add_node("concept2", "Concept 2", NodeType.CONCEPT)
         temp_store.add_node("shared_tag", "#shared", NodeType.TAG)
@@ -326,7 +328,8 @@ class TestDeleteNodeTypeAware:
     def test_concept_delete_removes_edges_from_deleted_tags_to_surviving_nodes(
         self, temp_store: GraphStore
     ):
-        """When a concept deletes its tag neighbors, edges from those tags to surviving nodes are also removed."""
+        """When a concept deletes its tag neighbors, edges from those tags to surviving
+        nodes are also removed."""
         temp_store.add_node("concept", "A concept", NodeType.CONCEPT)
         temp_store.add_node("entity", "An entity", NodeType.ENTITY)
         temp_store.add_node("tag", "#tag", NodeType.TAG)

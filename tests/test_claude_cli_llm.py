@@ -60,12 +60,14 @@ class TestClaudeCLIAvailable:
         """Should return False when CLI times out."""
         from mind_map.rag.reasoning_llm import check_claude_cli_available
 
-        with patch("mind_map.rag.reasoning_llm.shutil.which", return_value="/usr/local/bin/claude"):
-            with patch(
+        with (
+            patch("mind_map.rag.reasoning_llm.shutil.which", return_value="/usr/local/bin/claude"),
+            patch(
                 "mind_map.rag.reasoning_llm.subprocess.run",
                 side_effect=subprocess.TimeoutExpired("claude", 30),
-            ):
-                assert check_claude_cli_available() is False
+            ),
+        ):
+            assert check_claude_cli_available() is False
 
 
 class TestClaudeCLILLM:
@@ -127,10 +129,13 @@ class TestClaudeCLILLM:
 
         llm = ClaudeCLILLM(model="sonnet", timeout=1)
 
-        with patch(
-            "mind_map.rag.reasoning_llm.subprocess.run",
-            side_effect=subprocess.TimeoutExpired("claude", 1),
-        ), pytest.raises(RuntimeError, match="timed out"):
+        with (
+            patch(
+                "mind_map.rag.reasoning_llm.subprocess.run",
+                side_effect=subprocess.TimeoutExpired("claude", 1),
+            ),
+            pytest.raises(RuntimeError, match="timed out"),
+        ):
             llm._generate([HumanMessage(content="Hi")])
 
     def test_generate_cli_error(self):
@@ -144,9 +149,11 @@ class TestClaudeCLILLM:
         mock_result.returncode = 1
         mock_result.stderr = "Authentication failed"
 
-        with patch("mind_map.rag.reasoning_llm.subprocess.run", return_value=mock_result):
-            with pytest.raises(RuntimeError, match="Claude CLI error"):
-                llm._generate([HumanMessage(content="Hi")])
+        with (
+            patch("mind_map.rag.reasoning_llm.subprocess.run", return_value=mock_result),
+            pytest.raises(RuntimeError, match="Claude CLI error"),
+        ):
+            llm._generate([HumanMessage(content="Hi")])
 
     def test_generate_cli_not_found(self):
         """Should raise RuntimeError when CLI not found."""
@@ -156,10 +163,13 @@ class TestClaudeCLILLM:
 
         llm = ClaudeCLILLM(model="sonnet")
 
-        with patch(
-            "mind_map.rag.reasoning_llm.subprocess.run",
-            side_effect=FileNotFoundError(),
-        ), pytest.raises(RuntimeError, match="Claude CLI not found"):
+        with (
+            patch(
+                "mind_map.rag.reasoning_llm.subprocess.run",
+                side_effect=FileNotFoundError(),
+            ),
+            pytest.raises(RuntimeError, match="Claude CLI not found"),
+        ):
             llm._generate([HumanMessage(content="Hi")])
 
 
@@ -170,12 +180,14 @@ class TestGetClaudeCLILLM:
         """Should return ClaudeCLILLM when CLI is available."""
         from mind_map.rag.reasoning_llm import ClaudeCLILLM, get_claude_cli_llm
 
-        with patch("mind_map.rag.reasoning_llm.check_claude_cli_installed", return_value=True):
-            with patch("mind_map.rag.reasoning_llm.check_claude_cli_available", return_value=True):
-                llm = get_claude_cli_llm("sonnet", 120)
-                assert isinstance(llm, ClaudeCLILLM)
-                assert llm.model == "sonnet"
-                assert llm.timeout == 120
+        with (
+            patch("mind_map.rag.reasoning_llm.check_claude_cli_installed", return_value=True),
+            patch("mind_map.rag.reasoning_llm.check_claude_cli_available", return_value=True),
+        ):
+            llm = get_claude_cli_llm("sonnet", 120)
+            assert isinstance(llm, ClaudeCLILLM)
+            assert llm.model == "sonnet"
+            assert llm.timeout == 120
 
     def test_returns_none_when_not_installed(self):
         """Should return None when CLI not installed."""
@@ -189,7 +201,9 @@ class TestGetClaudeCLILLM:
         """Should return None when CLI not authenticated."""
         from mind_map.rag.reasoning_llm import get_claude_cli_llm
 
-        with patch("mind_map.rag.reasoning_llm.check_claude_cli_installed", return_value=True):
-            with patch("mind_map.rag.reasoning_llm.check_claude_cli_available", return_value=False):
-                llm = get_claude_cli_llm()
-                assert llm is None
+        with (
+            patch("mind_map.rag.reasoning_llm.check_claude_cli_installed", return_value=True),
+            patch("mind_map.rag.reasoning_llm.check_claude_cli_available", return_value=False),
+        ):
+            llm = get_claude_cli_llm()
+            assert llm is None

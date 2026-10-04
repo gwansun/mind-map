@@ -93,7 +93,8 @@ class TestMiniMaxChatLLMThinkTags:
     """Tests for <think>...</think> tag stripping."""
 
     def test_strips_think_tags(self):
-        """Response containing <think>reasoning...</think> should have tags stripped, leaving JSON only."""
+        """Response containing <think>reasoning...</think> should have tags stripped,
+        leaving JSON only."""
         from langchain_core.messages import HumanMessage
 
         from mind_map.rag.reasoning_llm import MiniMaxChatLLM

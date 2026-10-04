@@ -46,13 +46,16 @@ class TestMemoCliModes:
     def test_local_resolves_first_model_when_omitted(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             init_store(Path(tmpdir))
-            with patch(
-                "mind_map.processor.cli_executor.resolve_local_model",
-                return_value="mlx-community/gemma-4-e4b-it-4bit",
-            ), patch(
-                "mind_map.app.pipeline.ingest_memo_cli",
-                return_value=(True, "Created 1 nodes", ["n1"]),
-            ) as mock_ingest:
+            with (
+                patch(
+                    "mind_map.processor.cli_executor.resolve_local_model",
+                    return_value="mlx-community/gemma-4-e4b-it-4bit",
+                ),
+                patch(
+                    "mind_map.app.pipeline.ingest_memo_cli",
+                    return_value=(True, "Created 1 nodes", ["n1"]),
+                ) as mock_ingest,
+            ):
                 result = runner.invoke(
                     app,
                     ["memo", "hello world long enough", "--data-dir", tmpdir, "--local", ""],

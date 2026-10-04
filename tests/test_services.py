@@ -139,22 +139,25 @@ class TestMemoIngest:
     """Tests for memo_ingest target resolution and delegation."""
 
     def test_no_local_no_key_raises(self, temp_store: GraphStore):
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="MINIMAX_API_KEY"):
-                services.memo_ingest("hello world", temp_store)
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            pytest.raises(ValueError, match="MINIMAX_API_KEY"),
+        ):
+            services.memo_ingest("hello world", temp_store)
 
     def test_local_triggers_ingest_memo_cli(self, temp_store: GraphStore):
-        with patch(
-            "mind_map.processor.cli_executor.resolve_local_model",
-            return_value="mlx-community/test",
-        ), patch(
-            # services.memo_ingest lazy-imports from pipeline
-            "mind_map.app.pipeline.ingest_memo_cli",
-            return_value=(True, "Created 1 nodes", ["n1"]),
-        ) as mock_ingest:
-            success, message, node_ids = services.memo_ingest(
-                "hello world", temp_store, local=""
-            )
+        with (
+            patch(
+                "mind_map.processor.cli_executor.resolve_local_model",
+                return_value="mlx-community/test",
+            ),
+            patch(
+                # services.memo_ingest lazy-imports from pipeline
+                "mind_map.app.pipeline.ingest_memo_cli",
+                return_value=(True, "Created 1 nodes", ["n1"]),
+            ) as mock_ingest,
+        ):
+            success, message, node_ids = services.memo_ingest("hello world", temp_store, local="")
             assert success is True
             assert node_ids == ["n1"]
             target = mock_ingest.call_args.kwargs["target"]
@@ -165,11 +168,14 @@ class TestMemoIngest:
         # isn't picked up from .env so we exercise the fallback path.
         env = {k: v for k, v in os.environ.items() if k != "COMMANDCODE_API_KEY"}
         env["MINIMAX_API_KEY"] = "sk-env-key"
-        with patch.dict(os.environ, env, clear=True), patch(
-            # services.memo_ingest lazy-imports from pipeline
-            "mind_map.app.pipeline.ingest_memo_cli",
-            return_value=(True, "Created 2 nodes", ["n1", "n2"]),
-        ) as mock_ingest:
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(
+                # services.memo_ingest lazy-imports from pipeline
+                "mind_map.app.pipeline.ingest_memo_cli",
+                return_value=(True, "Created 2 nodes", ["n1", "n2"]),
+            ) as mock_ingest,
+        ):
             success, message, node_ids = services.memo_ingest(
                 "a memo", temp_store, source="test-source"
             )

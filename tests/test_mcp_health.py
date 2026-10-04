@@ -109,16 +109,16 @@ class TestHealthBasicStructure:
             assert result["workspace"] == "default"
 
     def test_custom_workspace(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with (
-                patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
-                patch(
-                    "mind_map.rag.llm_status.get_llm_status",
-                    return_value=_mock_llm_status_offline(),
-                ),
-            ):
-                result = json.loads(_health(workspace_id="alice"))
-                assert result["workspace"] == "alice"
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            patch("mind_map.mcp.server.DEFAULT_DATA_DIR", Path(tmpdir)),
+            patch(
+                "mind_map.rag.llm_status.get_llm_status",
+                return_value=_mock_llm_status_offline(),
+            ),
+        ):
+            result = json.loads(_health(workspace_id="alice"))
+            assert result["workspace"] == "alice"
 
     def test_checks_has_all_sections(self, temp_store: GraphStore):
         with patch(
