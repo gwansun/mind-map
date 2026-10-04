@@ -79,12 +79,11 @@ Memo ingestion requires an explicit model target. Resolution order:
 2. **Default cloud target (no flags)** — the CommandCode gateway
    - **primary**: when `COMMANDCODE_API_KEY` is set, uses the OpenAI-compatible LocalTarget transport at `https://api.commandcode.ai/provider/v1` (model `deepseek/deepseek-v4.1-flash`, overridable via `MIND_MAP_LLM_MODEL`; the legacy `MIND_MAP_DEEPSEEK_MODEL` alias is still honoured)
    - **MiniMax fallback**: `MINIMAX_API_KEY` + `MiniMaxTarget` (`api.minimax.io`, model `MiniMax-M2.5`) — legacy path, kept working
-3. **Configured processing LLM fallback** — commonly Ollama `phi3.5`
-4. **Heuristic fallback** — used when both model-backed paths fail
+The memo CLI/MCP path has no model fallback: if the resolved target fails, the memo is rejected.
 
-Exactly one of the CommandCode gateway (default) / MiniMax API (legacy fallback) / `--local` must provide a model target. If none of `COMMANDCODE_API_KEY`, `MINIMAX_API_KEY`, nor `--local` is provided, memo CLI ingestion fails early; if the selected path fails, it rejects with no fallback.
+### Internal (Non-CLI) Ingestion Chain
 
-Internal non-CLI ingestion paths use a separate internal ingestion flow.
+The HTTP routes (`POST /memo`, `POST /ask`) and the `ask` back-feed do not use a memo target. They summarise through the **configured processing LLM** (`processing_llm.provider` in `config.yaml`, currently `commandcode`) and write through the same storage steps. If the LLM call fails or returns unparsable JSON, extraction degrades to the heuristic extractor and logs a warning — a gateway error cannot lose a memo on these non-interactive paths. Callers that pass no LLM (the health checks) stay heuristic and make no LLM calls.
 
 This structure improves grounded linking while keeping ingestion resilient.
 
@@ -93,11 +92,11 @@ This structure improves grounded linking while keeping ingestion resilient.
 Extraction prompt characteristics:
 
 - a short **JSON-only** prompt rather than a long explanatory one
-- the base prompt explicitly forbids prose, markdown, explanation, and greetings
-- the retrieval-context prompt says `EXTRACT JSON` and focuses on required keys + allowed existing IDs
+- the single extraction prompt says `EXTRACT JSON`, names the required keys (`summary`, `tags`, `entities`, `relationships`) and forbids prose and markdown
+- the same prompt serves both paths: the memo target (`extract_with_references`) and the LLM-backed internal path (`extract_with_llm`)
 - retrieval context is compacted:
-  - max 10 retrieved nodes
-  - each node snippet trimmed to 150 chars
+  - max 15 reference nodes
+  - each node snippet trimmed to 120 chars
   - empty context marker is `(none)`
 
 The goal of the simplification is to elicit machine-parseable JSON instead of conversational wrapper text from the extraction model.
@@ -136,7 +135,7 @@ Context nodes are weighted by edge density to the most query-relevant node. Comb
 |-------|------------|
 | Orchestration | LangGraph |
 | Memo extraction (CLI + MCP) | CommandCode gateway (OpenAI-compatible) via the resolved memo target |
-| Memo/processing fallback | Ollama `phi3.5` or another configured processing model; MiniMax is the legacy cloud fallback |
+| Internal ingestion (routes, back-feed) | Configurable processing LLM (`processing_llm.provider`, currently CommandCode) with a logged heuristic fallback |
 | Vector Storage | ChromaDB |
 | Graph Storage | SQLite |
 | API | FastAPI |
@@ -147,19 +146,18 @@ Context nodes are weighted by edge density to the most query-relevant node. Comb
 
 | Role | Provider | Default Model | Purpose |
 |------|----------|---------------|---------|
-| Processing (general LLM-B) | Cloud APIs (auto) / Ollama fallback | gemini-2.0-flash | Filtering, extraction, summarization |
+| Processing (general LLM-B) | Configured provider (currently `commandcode`); `auto` = cloud chain | deepseek/deepseek-v4.1-flash | Summarisation/extraction on the internal ingestion path |
+| Internal ingestion fallback | Heuristic extractor (no LLM call) | — | Used when the LLM call fails or no LLM is supplied |
 | Memo extraction | CommandCode gateway (default) / MiniMax (legacy) / `--local` | deepseek/deepseek-v4.1-flash | Retrieval-grounded memo ingestion |
-| Memo extraction fallback | Ollama / configured processing model | phi3.5 | Structured extraction fallback |
 | Reasoning (LLM-A) | CommandCode gateway / fallbacks | deepseek/deepseek-v4.1-flash | Response generation |
 
-**Processing (general LLM-B)**: cloud-first with validated fallback to Ollama
+**Processing (general LLM-B)**: one configured provider, plus a validated `auto` chain
 
-- provider priority (`auto`): Gemini → Anthropic → OpenAI → Ollama
-- each cloud provider is validated with a test API call before use; if validation fails, the next provider is tried
+- config: `processing_llm.provider` in `config.yaml` (`commandcode`|`auto`|`gemini`|`anthropic`|`openai`|`ollama`); the shipped default is `commandcode`
+- `auto` priority: Gemini → Anthropic → OpenAI → Ollama; each provider is validated with a test API call before use, and `auto` is deliberately not preempted by `commandcode`
 - cloud models: `gemini-2.0-flash`, `claude-haiku-4-5-20250901`, `gpt-4o-mini`
-- Ollama recommended: `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`
-- config: `processing_llm.provider` in `config.yaml` (`auto`|`gemini`|`anthropic`|`openai`|`ollama`)
-- auto-pull (Ollama): disabled by default
+- Ollama (optional local provider): `phi3.5`, `phi3`, `llama3.2`, `mistral`, `gemma2:2b`, `qwen2.5:3b`; auto-pull disabled by default
+- the provider is invoked only where an LLM is supplied: the internal ingestion path (`POST /memo`, `POST /ask`, `ask` back-feed). Health checks and other `llm=None` callers never call it
 
 **Reasoning (LLM-A)**: DeepSeek family via the CommandCode gateway (default) with fallbacks
 
@@ -179,7 +177,7 @@ poetry run mind-map init              # Initialize database
 poetry run mind-map init --with-ollama  # Initialize with Ollama model
 poetry run mind-map init --data-dir /path/to/db  # Initialize a custom database path
 poetry run mind-map memo "text"       # Ingest a note (retrieval-augmented extraction)
-poetry run mind-map memo "text" --no-llm  # Ingest with heuristic only
+poetry run mind-map memo "text" --local ""  # Extract through a local OpenAI-compatible server
 poetry run mind-map memo "text" --data-dir /path/to/db  # Use a custom database path
 poetry run mind-map ask "query"       # Query the knowledge graph
 poetry run mind-map ask "query" --data-dir /path/to/db  # Query a custom database path
@@ -188,13 +186,16 @@ poetry run mind-map stats --data-dir /path/to/db  # View stats for a custom data
 poetry run mind-map serve             # Start FastAPI server
 poetry run mind-map serve --data-dir /path/to/db  # Start API server for a custom database path
 
-# Model Management
+# Model Management (Ollama provider)
 poetry run mind-map model list        # List available Ollama models
 poetry run mind-map model get         # Show current processing model
 poetry run mind-map model set phi3.5  # Set processing model
 poetry run mind-map model set phi3.5 --persist  # Set and save to config
 poetry run mind-map model pull mistral  # Download a model
 poetry run mind-map model select      # Interactive model selection
+
+# These `model` subcommands manage the Ollama provider. For the CommandCode /
+# cloud routes, set `processing_llm.provider` and `processing_llm.model` in config.yaml.
 
 # Development (Backend)
 poetry run ruff check .               # Lint
@@ -257,7 +258,7 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 | `mind_map_stats` | Knowledge graph statistics |
 | `mind_map_report` | JSON report with summary stats and top-5 nodes |
 | `mind_map_prune` | Prune the least important nodes (configurable `percent`, default 10%) |
-| `mind_map_health` | System health check (Ollama, databases, ProcessingLLM, integration tests) |
+| `mind_map_health` | System health check — four checks: `chromadb_connection`, `sqlite_connection`, `processing_llm`, `integration_tests` (similarity search, memo ingestion, data persistence) |
 
 ### Prune Algorithm (`mind_map_prune`)
 
@@ -273,8 +274,8 @@ The MCP server (`src/mind_map/mcp/server.py`) exposes the following tools via Fa
 
 ```yaml
 processing_llm:
-  provider: auto
-  model: phi3.5
+  provider: commandcode     # commandcode | auto | gemini | anthropic | openai | ollama
+  model: deepseek/deepseek-v4.1-flash   # CommandCode gateway model id (COMMANDCODE_API_KEY)
   temperature: 0.1
   auto_pull: false
 
@@ -321,9 +322,9 @@ Text Input
   → FilterAgent
   → Similarity Retrieval (top relevant existing nodes)
   → KnowledgeProcessor
-      - resolved memo target (CommandCode gateway by default)
-      - processing LLM fallback
-      - heuristic fallback
+      - memo CLI/MCP path: resolved memo target (CommandCode gateway by default)
+      - internal path (POST /memo, POST /ask, ask back-feed): configured processing LLM
+      - heuristic fallback when the LLM call fails or no LLM is supplied
   → GraphStore
       - concept node
       - tag edges
@@ -351,7 +352,7 @@ Query → ChromaDB Search (max_distance=0.5) → Enrich (relation factor) → Re
 
 ### Processor (LLM-B)
 
-- `src/mind_map/processor/processing_llm.py` — multi-provider processing LLM: cloud APIs + Ollama
+- `src/mind_map/processor/processing_llm.py` — multi-provider processing LLM: CommandCode, Gemini, Anthropic, OpenAI, Ollama
 - `src/mind_map/processor/filter_agent.py` — `FilterAgent` for keep/discard decisions
 - `src/mind_map/processor/knowledge_processor.py` — `KnowledgeProcessor` for retrieval-aware extraction
 - `src/mind_map/processor/cli_executor.py` — builds and runs the memo target CLI command

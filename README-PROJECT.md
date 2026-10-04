@@ -2,7 +2,7 @@
 
 > **GitHub:** https://github.com/gwansun/mind-map.git  
 > **Upstream:** https://github.com/Gwanjin-Chun/mind-map.git  
-> **Local path:** `/Users/gwansun/Desktop/projects/mind-map`
+> **Local path:** `/Users/gwansun/Projects/mind-map`
 
 ---
 
@@ -143,19 +143,17 @@ Only IDs supplied through retrieval context are allowed to become stored links.
 
 ### 3. Extraction Chain and Fallback Logic
 
-Memo extraction now uses a layered fallback strategy:
+Memo extraction resolves a single explicit target — there is no implicit model chain:
 
-1. **Primary**: MiniMax API direct
-   - calls MiniMax API via the `minimax` Python module
-   - uses a compact **JSON-only** prompt to reduce conversational / prose replies
-   - current timeout is **60 seconds**
-2. **Fallback**: configured processing LLM
-   - typically Ollama `phi3.5`
-3. **Final fallback**: heuristic extraction
-   - hashtags become tags
-   - capitalized words become entities
+1. **Primary**: CommandCode gateway via the OpenAI-compatible `LocalTarget`
+   - `https://api.commandcode.ai/provider/v1`, model `deepseek/deepseek-v4.1-flash`
+   - requires `COMMANDCODE_API_KEY`
+2. **Legacy cloud fallback**: MiniMax API direct (`MiniMaxTarget`, `MINIMAX_API_KEY`)
+3. **Local option**: `--local` — any OpenAI-compatible endpoint (URL from `MIND_MAP_LOCAL_BASE_URL`)
 
-This keeps memo ingestion resilient even if the preferred model path fails.
+If the resolved target fails, the memo is rejected.
+
+The separate **internal (non-CLI)** path — `POST /memo`, `POST /ask`, and the `ask` back-feed — summarises through the configured processing LLM (`processing_llm.provider`, currently `commandcode`) and falls back to heuristic extraction (logged) when that call fails or returns non-JSON. Callers that supply no LLM, such as the health checks, use heuristic extraction only and make no LLM calls.
 
 #### Prompting change summary
 
@@ -242,10 +240,11 @@ Common edge types:
 | Layer | Technology | Purpose |
 |-------|------------|---------|
 | Orchestration | **LangGraph** | Memo ingestion pipeline |
-| Memo extraction primary | **MiniMax API direct** | Retrieval-grounded extraction |
-| Memo extraction fallback | **Ollama phi3.5** | Structured extraction fallback |
-| General processing LLM | **Gemini / Claude / OpenAI / Ollama** | Filtering, extraction, summarization |
-| Reasoning LLM | **MiniMax API / Cloud APIs** | RAG-enhanced answer synthesis |
+| Memo extraction primary | **CommandCode gateway** | Retrieval-grounded extraction |
+| Memo extraction legacy fallback | **MiniMax API direct** | Kept working (legacy) |
+| Internal ingestion LLM | **Configured `processing_llm.provider`** (CommandCode default) | Summarisation/extraction for routes + back-feed, with logged heuristic fallback |
+| General processing LLM (`auto`) | **Gemini / Claude / OpenAI / Ollama** | Validated cloud chain behind `auto` |
+| Reasoning LLM | **CommandCode gateway (DeepSeek)** | RAG-enhanced answer synthesis |
 | CLI packaging | **Typer + uv tool install** | CLI entrypoint and installation |
 | MCP Server | **FastMCP** | Hermes agent tools |
 | Vector DB | **ChromaDB** | Node embeddings and metadata |
@@ -347,8 +346,8 @@ uv tool install --reinstall /Users/gwansun/Desktop/projects/mind-map/dist/mind_m
 
 ```yaml
 processing_llm:
-  provider: auto
-  model: phi3.5
+  provider: commandcode     # commandcode | auto | gemini | anthropic | openai | ollama
+  model: deepseek/deepseek-v4.1-flash
   temperature: 0.1
   auto_pull: false
 
