@@ -11,6 +11,13 @@ from rich.table import Table
 
 from mind_map.core.config import get_data_dir
 
+# Resolved once at import, which is what every command's argument default used to do
+# inline. get_data_dir() prefers MIND_MAP_DATA_DIR and falls back to the canonical
+# path; a module-level singleton keeps that env-aware resolution without repeating a
+# function call in seven defaults (ruff B008). A CLI resolves its data dir at process
+# start, so deferring it to invocation time via default_factory would buy nothing.
+CLI_DATA_DIR = get_data_dir()
+
 app = typer.Typer(
     name="mind-map",
     help="Knowledge Graph-based Mind Map with intelligent context management",
@@ -264,7 +271,7 @@ def model_help() -> None:
 def init(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
     with_ollama: Annotated[
         bool, typer.Option("--with-ollama", "-o", help="Also initialize Ollama with phi3.5")
     ] = False,
@@ -409,7 +416,7 @@ def memo(
     ] = None,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
     local: Annotated[
         str | None,
         typer.Option(
@@ -466,7 +473,7 @@ def retrieve(
     n_results: Annotated[int, typer.Option("--n-results", "-n", help="Number of results to return")] = 5,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
     show_context: Annotated[
         bool, typer.Option("--show-context/--no-context", help="Show connected nodes for each result")
     ] = True,
@@ -502,7 +509,7 @@ def ask(
     depth: Annotated[int, typer.Option("--depth", "-d", help="Graph traversal depth")] = 2,
     data_dir: Annotated[
         Path, typer.Option("--data-dir", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
     model: Annotated[
         str | None, typer.Option("--model", "-m", help="Specific processing model to use")
     ] = None,
@@ -569,7 +576,7 @@ def ask(
 def stats(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
 ) -> None:
     """Display knowledge graph statistics."""
     from mind_map.app.services import graph_stats
@@ -601,7 +608,7 @@ def stats(
 def prune(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
     percent: Annotated[
         float, typer.Option("--percent", "-p", help="Percentage of nodes to prune (0.0-1.0)")
     ] = 0.1,
@@ -635,7 +642,7 @@ def prune(
 def serve(
     data_dir: Annotated[
         Path, typer.Option("--data-dir", "-d", help="Directory for database storage")
-    ] = get_data_dir(),
+    ] = CLI_DATA_DIR,
     host: Annotated[str, typer.Option("--host", "-h", help="Host to bind to")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8000,
 ) -> None:

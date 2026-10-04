@@ -210,7 +210,7 @@ class TestRetrieveContext:
         store, _ = seeded_store
         lines = services.retrieve_context("anchor", store, n_results=1)
         # Find the concept line
-        concept_lines = [l for l in lines if "[concept]" in l]
+        concept_lines = [line for line in lines if "[concept]" in line]
         assert len(concept_lines) == 1
         assert "(Relevance:" in concept_lines[0]
         assert "Anchor concept about retrieval" in concept_lines[0]
@@ -218,13 +218,13 @@ class TestRetrieveContext:
     def test_show_context_includes_related(self, seeded_store):
         store, _ = seeded_store
         lines = services.retrieve_context("anchor", store, n_results=1, show_context=True)
-        related = [l for l in lines if "└─ related" in l]
+        related = [line for line in lines if "└─ related" in line]
         assert len(related) == 3  # tag + 2 entities
 
     def test_show_context_false_omits_related(self, seeded_store):
         store, _ = seeded_store
         lines = services.retrieve_context("anchor", store, n_results=1, show_context=False)
-        related = [l for l in lines if "└─ related" in l]
+        related = [line for line in lines if "└─ related" in line]
         assert related == []
 
     def test_max_context_per_node_truncates(self, seeded_store):
@@ -232,7 +232,7 @@ class TestRetrieveContext:
         lines = services.retrieve_context(
             "anchor", store, n_results=1, show_context=True, max_context_per_node=2
         )
-        related = [l for l in lines if "└─ related" in l]
+        related = [line for line in lines if "└─ related" in line]
         assert len(related) == 2
 
     def test_empty_graph_returns_single_line(self, temp_store: GraphStore):
@@ -265,11 +265,11 @@ class TestAskQuestion:
         fake_response = "Generated answer text"
         with patch(
             "mind_map.rag.response_generator.ResponseGenerator"
-        ) as MockGen, patch(
+        ) as mock_gen, patch(
             "mind_map.rag.reasoning_llm.get_reasoning_llm",
             return_value="fake-llm",
         ):
-            MockGen.return_value.generate_sync.return_value = fake_response
+            mock_gen.return_value.generate_sync.return_value = fake_response
             with patch(
                 "mind_map.app.services.ingest_memo_internal"
             ) as mock_internal:
@@ -292,11 +292,11 @@ class TestAskQuestion:
         fake_response = "Generated answer"
         with patch(
             "mind_map.rag.response_generator.ResponseGenerator"
-        ) as MockGen, patch(
+        ) as mock_gen, patch(
             "mind_map.rag.reasoning_llm.get_reasoning_llm",
             return_value="fake-llm",
         ):
-            MockGen.return_value.generate_sync.return_value = fake_response
+            mock_gen.return_value.generate_sync.return_value = fake_response
             with patch(
                 "mind_map.app.services.ingest_memo_internal",
                 return_value=(True, "ok", ["qa_node_1"]),
