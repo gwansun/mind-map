@@ -21,6 +21,7 @@ Current behavior includes:
 - storage handles deterministic graph linking
 - strict memo CLI ingestion is separated from legacy/internal ingestion
 - strict memo CLI ingestion requires an explicit target and rejects on explicit-target failure
+- **2026-10-03 update**: the internal (non-CLI) path — HTTP `POST /memo`, `POST /ask`, and the `ask` back-feed — now summarises through the configured processing LLM (`processing_llm.provider`, default `commandcode`) and shares one prompt/parser with the memo target path (`KnowledgeProcessor.extract_with_llm`, commit `14c3c58`). Failure or non-JSON degrades to heuristic extraction with a logged warning; `llm=None` callers still make no LLM calls.
 
 Current source-of-truth files:
 - `src/mind_map/app/pipeline.py`

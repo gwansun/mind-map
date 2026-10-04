@@ -1,6 +1,8 @@
 # Mind Map Application - Version 2 (Evolution)
 
 > **Note**: This is the implementation plan. For current progress and status, see [PROGRESS.md](PROGRESS.md).
+>
+> **Current state (2026-10-03)**: the plan-era Ollama-first text below is historical. The processing leg runs on the provider named in `config.yaml` (`processing_llm.provider`, shipped default `commandcode`) and is now actually invoked by the internal ingestion path (HTTP routes + `ask` back-feed), with a logged heuristic fallback. See [README.md](README.md) and [PLAN.McpFollowsCli.md](PLAN.McpFollowsCli.md) for the current contract.
 
 ## 📋 Description
 An intelligent Mind Map system designed to capture, synthesize, and persist project contexts, conversations, and decisions. It utilizes a Knowledge Graph-inspired RAG (Retrieval Augmented Generation) approach to ensure that LLM interactions are always contextually aware and high-value data is prioritized.
@@ -61,8 +63,8 @@ $$S = \left( \frac{C_{node}}{C_{max}} \right) \cdot e^{-\lambda \Delta t}$$
 | Layer | Technology | Details |
 | :--- | :--- | :--- |
 | **Logic & Orchestration** | **Python** / **LangGraph** | LangGraph handles the cyclic flow (Filter -> KG Update -> RAG -> Respond). |
-| **Processing LLM (B)** | **Cloud APIs (auto) / Ollama (Phi-3.5) fallback** | Cloud-first with validated fallback; each provider tested before use. |
-| **Reasoning LLM (A)** | **Claude Code / GPT-4o / Gemini** | High-level reasoning for final user output. |
+| **Processing LLM (B)** | **Configured provider** (shipped default: CommandCode) / **`auto` chain** (Gemini → Anthropic → OpenAI → Ollama) | Called by the internal ingestion path (routes + back-feed); each `auto` provider is validated with a test call before use. |
+| **Reasoning LLM (A)** | **DeepSeek family via the CommandCode gateway** (fallbacks: Claude CLI → Gemini → Anthropic → OpenAI) | High-level reasoning for final user output. |
 | **Vector Database** | **ChromaDB** | Stores embeddings and graph metadata (node IDs, connection counts). |
 | **CLI Deployment** | **Typer** | Provides a modern, fast CLI experience with command autocompletion. |
 | **Frontend Deployment** | **Angular** | A robust framework for building a dynamic "Graph Explorer" visualization. |
@@ -366,8 +368,10 @@ Codebase split into 4 cohesive packages under `src/mind_map/`:
 
 Removed: `llm.py` facade (consumers import directly), `importance.py` (unused duplicate).
 
-### 2. Processing LLM Validation & Ollama Fallback
-Cloud providers (Gemini, Anthropic, OpenAI) are now validated with a test API call during `get_processing_llm()`. If validation fails (e.g., depleted credits, invalid key), the next provider is tried, eventually falling through to Ollama. This ensures `get_processing_llm()` returns a working LLM or None.
+### 2. Processing LLM Validation & Provider Selection
+`get_processing_llm()` returns the provider named by `processing_llm.provider` in `config.yaml` — the shipped default is `commandcode` (CommandCode gateway, `deepseek/deepseek-v4.1-flash`). The `auto` chain (`gemini → anthropic → openai → ollama`) validates each cloud provider with a test API call before use and falls through on failure, so `auto` returns a working LLM or None. `commandcode` is deliberately not part of `auto`: selecting it is an explicit config choice, pinned by a test.
+
+Since 2026-10-03 the internal ingestion path (HTTP `POST /memo`, `POST /ask`, and the `ask` back-feed) actually invokes this LLM to summarise; a failed or unparsable response is logged and degrades to the heuristic extractor. `llm=None` callers (the health checks) remain heuristic and make no LLM calls.
 
 ### 3. Ask Workflow Fix
 Both CLI and API `ask` commands now always call the Reasoning LLM regardless of whether context nodes were found. The flow:

@@ -13,6 +13,7 @@ As of the current implementation:
 - memo CLI filtering/extraction do **not** use an implicit fallback chain when an explicit target is provided
 - if the explicit target fails, the memo is rejected
 - legacy/internal ingestion paths may still use separate internal helpers, but that is distinct from the strict memo CLI path
+- **2026-10-03 update**: the internal (non-CLI) ingestion path now summarises through the configured processing LLM (`processing_llm.provider`, default `commandcode`) via `KnowledgeProcessor.extract_with_llm` (commit `14c3c58`), instead of silently storing a 200-char truncation. A failed or unparsable LLM response is logged and degrades to the heuristic extractor; `llm=None` callers (health checks) stay heuristic and make no LLM calls.
 
 Current source-of-truth files:
 - `src/mind_map/app/pipeline.py`

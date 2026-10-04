@@ -55,13 +55,15 @@ target. This deserves a callout in the commit message and the PR description.
 
 | Tool | Body lines | Divergence from CLI |
 |---|---|---|
-| `mind_map_memo` (88–106) | `get_processing_llm()` + `ingest_memo_internal` | **Wrong pipeline**: uses `internal` (legacy LangChain path) instead of CLI's `cli` (direct MiniMax / local) — **silent behavioral drift** |
+| `mind_map_memo` (88–106) | `services.memo_ingest(local=…)` → resolved target (LocalTarget @ CommandCode by default / MiniMaxTarget / `local`) → `ingest_memo_cli` | **Resolved** (verified 2026-10-03): same target path as the CLI. The earlier "wrong pipeline / silent behavioural drift" note described a pre-fix state. |
 | `mind_map_retrieve` (59–86) | `query_similar` → `enrich_context_nodes` → flat bullet output | **Missing**: `--show-context`, `--max-context-per-node` (returns no neighbor expansion) |
 | `mind_map_ask` | **(does not exist)** | **Missing entirely** — biggest gap |
 | `mind_map_stats` (108–124) | `get_stats` → text summary | Missing `--data-dir` |
 | `mind_map_prune` (217–348) | Same algorithm as CLI prune | **Missing `--percent`** (hardcoded 0.1); missing `--data-dir` |
 | `mind_map_report` (126–214) | Top-5 importance + JSON | MCP-only; no CLI equivalent. Keep as-is. |
-| `mind_map_health` (351–569) | Ollama + ChromaDB + SQLite + LLM + 3 integration tests | MCP-only; no CLI equivalent. Keep as-is. |
+| `mind_map_health` (351–569) | ChromaDB + SQLite + processing LLM + 3 integration tests (the `ollama_connection` probe was dropped 2026-10-03) | MCP-only; no CLI equivalent. Keep as-is. |
+
+> **2026-10-03 — the internal ingestion path now summarises through the configured processing LLM.** `create_extraction_node_legacy` used to accept an `llm` and ignore it (`_heuristic_extraction` stored a 200-char truncation), so `POST /memo`, `POST /ask` and the `ask` back-feed diverged from the memo path, which stored a real LLM summary. `KnowledgeProcessor.extract_with_llm` (commit `14c3c58`) now uses the LLM on that path and shares one prompt/parser with the target path; a failed or non-JSON response is logged and degrades to heuristic. `llm=None` callers — the health checks — still make zero LLM calls. The unusable, unreferenced `EXTRACTION_PROMPT` (its JSON example's literal braces made `format_messages` raise `KeyError`) was removed in `988cf51`.
 
 ### Duplication matrix
 
