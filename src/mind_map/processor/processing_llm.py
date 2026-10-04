@@ -504,13 +504,8 @@ def get_ollama_llm(
         from langchain_ollama import ChatOllama
         return ChatOllama(model=model, temperature=0.1)
     except ImportError:
-        # Fallback to langchain_community if langchain_ollama not available
-        try:
-            from langchain_community.chat_models import ChatOllama
-            return ChatOllama(model=model, temperature=0.1)
-        except ImportError:
-            console.print("[red]langchain-ollama not installed[/red]")
-            return None
+        console.print("[red]langchain-ollama not installed[/red]")
+        return None
 
 
 def initialize_ollama(
