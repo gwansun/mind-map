@@ -1,5 +1,6 @@
 """Tests for strict-target filter behavior and legacy heuristic ingestion."""
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -216,3 +217,110 @@ class TestFormatRetrievedConcepts:
             assert f"id-{i}" in result
         for i in range(5, 10):
             assert f"id-{i}" not in result
+
+
+# =============================================================================
+# Integration: legacy pipeline summarises through the injected LLM
+# =============================================================================
+
+
+class _StubChatLlm:
+    """Minimal chat-model stand-in that records how often it was invoked."""
+
+    def __init__(self, payload: dict | None = None, error: Exception | None = None):
+        self.calls = 0
+        self._payload = payload
+        self._error = error
+
+    def invoke(self, messages):
+        self.calls += 1
+        if self._error is not None:
+            raise self._error
+        from langchain_core.messages import AIMessage
+
+        return AIMessage(content=json.dumps(self._payload))
+
+
+class TestLegacyExtractionWithLlm:
+    """The internal path must summarise via the LLM when one is injected."""
+
+    SUBSTANTIVE = (
+        "Kubernetes pods are the smallest deployable units; a ReplicaSet keeps a "
+        "stable number of replicas running, and a Service gives them a stable "
+        "network identity, while Ingress exposes HTTP routes from outside the cluster."
+    )
+
+    def test_llm_summary_is_used_and_stored(self, temp_store: GraphStore):
+        """An injected LLM produces the stored summary, not a text truncation."""
+        llm = _StubChatLlm(
+            payload={
+                "summary": "Kubernetes primitives: pods, ReplicaSets, Services, Ingress.",
+                "tags": ["#k8s"],
+                "entities": ["Kubernetes", "ReplicaSet"],
+                "relationships": [["Ingress", "exposes", "HTTP routes"]],
+            }
+        )
+
+        success, _message, node_ids = ingest_memo_internal(
+            self.SUBSTANTIVE, temp_store, llm=llm
+        )
+
+        assert success is True
+        assert llm.calls == 1
+        concept = temp_store.get_node(node_ids[0])
+        assert concept is not None
+        assert concept.document == "Kubernetes primitives: pods, ReplicaSets, Services, Ingress."
+        assert concept.document != self.SUBSTANTIVE[:200]
+
+    def test_no_llm_keeps_heuristic_and_makes_no_call(self, temp_store: GraphStore):
+        """llm=None preserves the free heuristic path (health checks rely on it)."""
+        with patch("mind_map.app.pipeline._llm_extraction") as mock_extract:
+            success, _message, node_ids = ingest_memo_internal(
+                self.SUBSTANTIVE, temp_store, llm=None
+            )
+
+        assert success is True
+        mock_extract.assert_not_called()
+        concept = temp_store.get_node(node_ids[0])
+        assert concept is not None
+        assert concept.document == self.SUBSTANTIVE[:200]
+
+    def test_llm_failure_falls_back_to_heuristic(self, temp_store: GraphStore, caplog):
+        """A failing LLM must not lose the memo; it degrades and logs."""
+        llm = _StubChatLlm(error=RuntimeError("gateway 503"))
+
+        with caplog.at_level("WARNING", logger="mind_map.app.pipeline"):
+            success, _message, node_ids = ingest_memo_internal(
+                self.SUBSTANTIVE, temp_store, llm=llm
+            )
+
+        assert success is True
+        assert llm.calls == 1
+        concept = temp_store.get_node(node_ids[0])
+        assert concept is not None
+        assert concept.document == self.SUBSTANTIVE[:200]
+        assert "LLM extraction failed" in caplog.text
+
+    def test_non_json_response_falls_back_to_heuristic(self, temp_store: GraphStore):
+        """A non-JSON LLM response degrades instead of storing garbage."""
+
+        class _ProseLlm:
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, messages):
+                self.calls += 1
+                from langchain_core.messages import AIMessage
+
+                return AIMessage(content="Sure! Here is the JSON you asked for: ...")
+
+        llm = _ProseLlm()
+        success, _message, node_ids = ingest_memo_internal(
+            self.SUBSTANTIVE, temp_store, llm=llm
+        )
+
+        assert success is True
+        assert llm.calls == 1
+        concept = temp_store.get_node(node_ids[0])
+        assert concept is not None
+        assert concept.document == self.SUBSTANTIVE[:200]

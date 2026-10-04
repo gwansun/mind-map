@@ -6,9 +6,11 @@ If the given target fails, extraction throws and the memo is rejected.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
+from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -60,6 +62,29 @@ def _build_reference_context(reference_nodes: list[GraphNode]) -> str:
     return "\n".join(lines)
 
 
+def _parse_json_object(message: Any) -> dict[str, Any]:
+    """Pull a JSON object out of a chat-model response.
+
+    Tolerates fenced ```json blocks. Raises ValueError when the response is not
+    a JSON object, so callers can decide how to degrade.
+    """
+    content = getattr(message, "content", message)
+    if isinstance(content, list):
+        content = "".join(
+            part.get("text", "") for part in content if isinstance(part, dict)
+        )
+    text = str(content).strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[A-Za-z]*\s*|\s*```$", "", text).strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LLM response was not JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM response JSON was not an object")
+    return parsed
+
+
 def _call_custom_extraction(
     cli_template: str,
     prompt: str,
@@ -84,7 +109,6 @@ class KnowledgeProcessor:
         self._llm = llm
         self._target = target
         self._parser = JsonOutputParser(pydantic_object=ExtractionResult)
-        self._chain = EXTRACTION_PROMPT | llm | self._parser if llm else None
 
     def _parse_extraction_result(self, raw: dict[str, Any], *, fallback_text: str) -> ExtractionResult:
         summary = raw.get("summary", "")
@@ -112,6 +136,13 @@ class KnowledgeProcessor:
             relationships=relationships,
         )
 
+    def _build_prompt(self, text: str, reference_nodes: list[GraphNode] | None) -> str:
+        """Single source of the extraction prompt for the target and LLM paths."""
+        return _REFERENCE_CONTEXT_TEMPLATE.format(
+            text=text,
+            references=_build_reference_context(reference_nodes or []),
+        )
+
     def extract_with_references(
         self,
         text: str,
@@ -122,15 +153,30 @@ class KnowledgeProcessor:
         Uses the explicit target only; raises on failure.
         No internal provider loading or fallback is allowed on the memo CLI path.
         """
-        references = _build_reference_context(reference_nodes)
-
         if self._target is None:
             raise ValueError("Memo target is required for extraction")
 
-        prompt = _REFERENCE_CONTEXT_TEMPLATE.format(
-            text=text,
-            references=references,
-        )
+        prompt = self._build_prompt(text, reference_nodes)
         raw = _call_custom_extraction(build_cli_template(self._target), prompt)
         return self._parse_extraction_result(raw, fallback_text=text)
+
+    def extract_with_llm(
+        self,
+        text: str,
+        reference_nodes: list[GraphNode] | None = None,
+    ) -> ExtractionResult:
+        """Extract structured knowledge through the injected chat LLM.
+
+        The internal (non-CLI) counterpart of ``extract_with_references``: same
+        prompt and parser, but called through the LLM object rather than a memo
+        target subprocess. Raises on failure; the caller decides how to degrade.
+        """
+        if self._llm is None:
+            raise ValueError("LLM is required for LLM extraction")
+
+        messages = [HumanMessage(content=self._build_prompt(text, reference_nodes))]
+        return self._parse_extraction_result(
+            _parse_json_object(self._llm.invoke(messages)),
+            fallback_text=text,
+        )
 

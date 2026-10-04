@@ -1,6 +1,7 @@
 """LangGraph pipelines for strict memo CLI ingestion and internal non-CLI ingestion."""
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,6 +19,8 @@ from mind_map.core.schemas import (
 from mind_map.processor.cli_executor import CLIExecutionError, MemoTarget
 from mind_map.processor.filter_agent import FilterAgent
 from mind_map.rag.graph_store import GraphStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -154,14 +157,50 @@ def create_filter_node_legacy():
     return filter_node
 
 
+def _llm_extraction(
+    llm: Any,
+    text: str,
+    reference_nodes: list[GraphNode] | None = None,
+) -> dict[str, Any]:
+    """Extract through the injected chat LLM, degrading to heuristic on failure.
+
+    Internal ingestion is non-interactive (HTTP routes, Q&A back-feed), so a
+    failed or unparsable LLM response must not lose the memo: it is logged and
+    heuristic extraction is used instead.
+    """
+    from mind_map.processor.knowledge_processor import KnowledgeProcessor
+
+    try:
+        result = KnowledgeProcessor(llm=llm).extract_with_llm(text, reference_nodes)
+        return {"extraction": result}
+    except Exception as exc:
+        logger.warning(
+            "LLM extraction failed (%s: %s); falling back to heuristic extraction",
+            type(exc).__name__,
+            exc,
+        )
+        return _heuristic_extraction(text)
+
+
 def create_extraction_node_legacy(llm: Any | None = None):
-    """Extraction node for internal non-CLI ingestion paths."""
+    """Extraction node for internal non-CLI ingestion paths.
+
+    With an ``llm`` the node summarises through the paid LLM route (summary,
+    tags, entities, relationships). Without one it stays heuristic, so callers
+    that pass ``llm=None`` (the health checks) make no LLM calls.
+    """
 
     def extraction_node(state: PipelineState) -> dict[str, Any]:
         if state.filter_decision is None or state.filter_decision.action != "new":
             return {}
         text = state.filter_decision.summary or state.raw_text
-        return _heuristic_extraction(text)
+        if llm is None:
+            return _heuristic_extraction(text)
+
+        references: list[GraphNode] = []
+        if state.retrieval is not None:
+            references = [*state.retrieval.entities, *state.retrieval.tags]
+        return _llm_extraction(llm, text, references)
 
     return extraction_node
 
