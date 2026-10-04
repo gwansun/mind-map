@@ -152,7 +152,8 @@ def build_local_command(target: LocalTarget) -> str:
         f"model={target.model!r}; "
         f"max_tokens={_LOCAL_MAX_COMPLETION_TOKENS!r}; "
         "prompt=sys.argv[1]; "
-        "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'response_format': {'type': 'json_object'}, 'max_tokens': max_tokens}).encode(); "
+        "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], "
+        "'response_format': {'type': 'json_object'}, 'max_tokens': max_tokens}).encode(); "
         f"headers={_local_headers_literal(target.api_key)}; "
         "req=urllib.request.Request(base + '/chat/completions', data=body, headers=headers); "
         "resp=urllib.request.urlopen(req, timeout=60); "
@@ -179,7 +180,8 @@ def build_minimax_http_command(target: MiniMaxTarget) -> str:
         f"model={target.model!r}; "
         f"max_tokens={target.max_tokens!r}; "
         "prompt=sys.argv[1]; "
-        "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], 'max_tokens': max_tokens}).encode(); "
+        "body=json.dumps({'model': model, 'messages': [{'role': 'user', 'content': prompt}], "
+        "'max_tokens': max_tokens}).encode(); "
         "req=urllib.request.Request(base_url + '/v1/chat/completions', data=body, "
         "headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key}); "
         "resp=urllib.request.urlopen(req, timeout=60); "
@@ -217,7 +219,7 @@ def run_cli_json(
     try:
         command_parts = shlex.split(command_template)
     except ValueError as e:
-        raise CLIExecutionError(f"Invalid command template: {command_template}\nerror: {e}")
+        raise CLIExecutionError(f"Invalid command template: {command_template}\nerror: {e}") from e
 
     if not command_parts:
         raise CLIExecutionError("Command template is empty")
@@ -235,8 +237,8 @@ def run_cli_json(
             timeout=timeout,
             check=False,
         )
-    except subprocess.TimeoutExpired:
-        raise CLIExecutionError(f"Command timed out after {timeout}s: {command_template}")
+    except subprocess.TimeoutExpired as exc:
+        raise CLIExecutionError(f"Command timed out after {timeout}s: {command_template}") from exc
 
     if result.returncode != 0:
         raise CLIExecutionError(

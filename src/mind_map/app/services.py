@@ -326,10 +326,8 @@ def ask_question(
         # the AttributeError is caught here so the back-feed path doesn't
         # blow up. pyright: ignore[reportAttributeAccessIssue]
         for node in nodes:
-            try:
+            with contextlib.suppress(AttributeError):
                 store.update_interaction(node.id)  # type: ignore[attr-defined]
-            except AttributeError:
-                pass
 
         # Extract Q&A back into the graph via internal ingestion path
         from mind_map.processor.processing_llm import get_processing_llm

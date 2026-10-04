@@ -25,7 +25,8 @@ NEW MEMO:
 RETRIEVED CONCEPT CANDIDATES:
 {retrieved_concepts}
 
-Respond ONLY with a JSON object with keys: action (one of: new, duplicate, discard), reason (string), summary (string or null).
+Respond ONLY with a JSON object with keys: action (one of: new, duplicate, discard), """
+"""reason (string), summary (string or null).
 """
 
 

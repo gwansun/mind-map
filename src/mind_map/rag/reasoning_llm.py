@@ -150,12 +150,12 @@ class ClaudeCLILLM(BaseChatModel):
                 generations=[ChatGeneration(message=AIMessage(content=response_text))]
             )
 
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"Claude CLI timed out after {self.timeout}s")
-        except FileNotFoundError:
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"Claude CLI timed out after {self.timeout}s") from exc
+        except FileNotFoundError as exc:
             raise RuntimeError(
                 "Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
-            )
+            ) from exc
 
 
 def check_claude_cli_installed() -> bool:
@@ -254,8 +254,8 @@ class MiniMaxChatLLM(BaseChatModel):
 
         try:
             import requests
-        except ImportError:
-            raise RuntimeError("requests is required for MiniMax API calls")
+        except ImportError as exc:
+            raise RuntimeError("requests is required for MiniMax API calls") from exc
 
         # Convert LangChain messages to OpenAI format
         openai_messages = []
@@ -286,10 +286,10 @@ class MiniMaxChatLLM(BaseChatModel):
                 timeout=self.timeout,
             )
             resp.raise_for_status()
-        except requests.Timeout:
-            raise RuntimeError(f"MiniMax API timed out after {self.timeout}s")
+        except requests.Timeout as exc:
+            raise RuntimeError(f"MiniMax API timed out after {self.timeout}s") from exc
         except requests.RequestException as e:
-            raise RuntimeError(f"MiniMax API request failed: {e}")
+            raise RuntimeError(f"MiniMax API request failed: {e}") from e
 
         body = resp.json()
         choices = body.get("choices", [])

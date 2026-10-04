@@ -211,8 +211,8 @@ mind-map model list                     # List available models
 mind-map model set phi3.5 --persist     # Set and save model choice
 
 [dim]# Ingesting notes[/dim]
-mind-map memo "Note" --local ""                              # local endpoint http://127.0.0.1:11435/v1 using first /models entry
-mind-map memo "Note" --local mlx-community/gemma-4-e4b-it-4bit   # local endpoint with explicit model id
+mind-map memo "Note" --local ""  # local endpoint http://127.0.0.1:11435/v1 (first /models entry)
+mind-map memo "Note" --local mlx-community/gemma-4-e4b-it-4bit  # local endpoint, explicit model
 
 [dim]# Querying[/dim]
 mind-map ask "What is Python?"          # Query knowledge graph
@@ -458,7 +458,10 @@ def memo(
         str | None,
         typer.Option(
             "--local",
-            help="Use explicit local OpenAI-compatible path. Omit value to auto-resolve first /models entry, or pass a model id",
+            help=(
+                "Use explicit local OpenAI-compatible path. Omit value to auto-resolve first "
+                "/models entry, or pass a model id"
+            ),
         ),
     ] = None,
 ) -> None:
@@ -489,7 +492,7 @@ def memo(
             "[dim]Set COMMANDCODE_API_KEY (default) or MINIMAX_API_KEY in your "
             "environment, or pass --local for local mode.[/dim]"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
     if message.startswith("Memo rejected:"):
         console.print(f"[red]{message}[/red]")
@@ -599,7 +602,8 @@ def ask(
                 console.print(f"[cyan][{i}][/cyan] {node.document[:200]}...")
         else:
             console.print(
-                "[yellow]No context and no reasoning LLM. Please set up Claude CLI or configure an API key.[/yellow]"
+                "[yellow]No context and no reasoning LLM. "
+                "Please set up Claude CLI or configure an API key.[/yellow]"
             )
         return
 
@@ -681,7 +685,8 @@ def prune(
         raise typer.Exit(0)
 
     console.print(
-        f"[green]Pruned {len(result['deleted_nodes'])} node(s) and {len(result['deleted_tags'])} tag(s).[/green]"
+        f"[green]Pruned {len(result['deleted_nodes'])} node(s) and "
+        f"{len(result['deleted_tags'])} tag(s).[/green]"
     )
     console.print(f"[dim]Removed {result['deleted_edges_count']} edge(s).[/dim]")
 

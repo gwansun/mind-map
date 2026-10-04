@@ -1,5 +1,6 @@
 """FastAPI routes for Mind Map API."""
 
+import contextlib
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -216,7 +217,9 @@ async def ask(request: AskRequest) -> AskResponse:
             )
         return AskResponse(
             query=request.query,
-            response="Reasoning LLM not configured. Please set up Claude CLI or configure an API key.",
+            response=(
+                "Reasoning LLM not configured. Please set up Claude CLI or " "configure an API key."
+            ),
             context_nodes=[],
         )
 
@@ -229,10 +232,8 @@ async def ask(request: AskRequest) -> AskResponse:
     # NOTE: GraphStore.update_interaction is not implemented. The guard mirrors
     # services.ask_question so POST /ask does not 500 with AttributeError.
     for node in context_nodes:
-        try:
+        with contextlib.suppress(AttributeError):
             store.update_interaction(node.id)  # type: ignore[attr-defined]
-        except AttributeError:
-            pass
 
     # Step 4: Process Q&A pair through LLM(B) pipeline and add to knowledge graph
     # This happens regardless of whether context existed - grows the KG
