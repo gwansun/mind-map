@@ -32,6 +32,8 @@ fastmcp = "^2.14.5"
 pytest = "^8"
 ruff = "^0.8"
 mypy = "^1"
+types-requests = "^2.33.0.20260906"
+types-pyyaml = "^6.0.12.20260906"
 
 [build-system]
 requires = ["poetry-core"]
