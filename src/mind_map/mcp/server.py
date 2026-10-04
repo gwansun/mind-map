@@ -2,7 +2,6 @@ import json
 import sys
 import time  # noqa: F401 — re-exported for test patchability (test_error_json_is_valid)
 from pathlib import Path
-from typing import Any, Optional
 
 # Add src to path to ensure imports work correctly
 src_path = str(Path(__file__).parent.parent.parent)
@@ -13,13 +12,12 @@ from fastmcp import FastMCP
 
 # Back-compat alias for older tests/callers that still patch `ingest_memo`.
 # Re-exported from services so the path remains `mind_map.mcp.server.ingest_memo`.
-from mind_map.app.services import ingest_memo  # noqa: F401
-
 from mind_map.app.services import (
     ask_question as _ask_question,
     format_stats_text as _format_stats_text,
     graph_stats as _graph_stats,
     health_check as _health_check,
+    ingest_memo,  # noqa: F401
     memo_ingest as _memo_ingest,
     prune_graph as _prune_graph,
     report_graph as _report_graph,
@@ -27,9 +25,6 @@ from mind_map.app.services import (
     retrieve_context as _retrieve_context,
 )
 from mind_map.core.config import get_data_dir
-from mind_map.core.schemas import Edge, NodeType
-from mind_map.rag.graph_store import GraphStore
-from mind_map.rag.llm_status import get_llm_status
 
 # Re-exported for test patchability. Tests patch these at the `mind_map.mcp.server`
 # module level (e.g., `patch("mind_map.mcp.server.check_ollama_available", ...)`).
@@ -41,6 +36,7 @@ from mind_map.processor.processing_llm import (  # noqa: F401
     get_processing_llm,
     get_selected_model,
 )
+from mind_map.rag.graph_store import GraphStore
 
 # Initialize FastMCP
 mcp = FastMCP("MindMap")
@@ -52,7 +48,7 @@ DEFAULT_DATA_DIR = get_data_dir()
 # workspace_id -> GraphStore instance
 stores: dict[str, GraphStore] = {}
 
-def get_store(workspace_id: Optional[str] = None) -> GraphStore:
+def get_store(workspace_id: str | None = None) -> GraphStore:
     """Get or initialize a GraphStore for a specific workspace.
 
     Test surface: tests patch `mind_map.mcp.server.get_store` and the
@@ -80,8 +76,8 @@ def mind_map_retrieve(
     n_results: int = 5,
     show_context: bool = True,
     max_context_per_node: int = 3,
-    data_dir: Optional[str] = None,
-    workspace_id: Optional[str] = None,
+    data_dir: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Retrieve relevant context from the knowledge graph based on a query.
 
@@ -113,10 +109,10 @@ def mind_map_retrieve(
 @mcp.tool()
 def mind_map_memo(
     text: str,
-    source: Optional[str] = None,
-    local: Optional[str] = None,
-    data_dir: Optional[str] = None,
-    workspace_id: Optional[str] = None,
+    source: str | None = None,
+    local: str | None = None,
+    data_dir: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Ingest new information or a Q&A pair into the knowledge graph.
 
@@ -168,10 +164,10 @@ def mind_map_ask(
     query: str,
     depth: int = 2,
     n_results: int = 5,
-    data_dir: Optional[str] = None,
-    model: Optional[str] = None,
+    data_dir: str | None = None,
+    model: str | None = None,
     back_feed: bool = False,
-    workspace_id: Optional[str] = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Query the knowledge graph with a RAG-enhanced LLM response.
 
@@ -212,8 +208,8 @@ def mind_map_ask(
 
 @mcp.tool()
 def mind_map_stats(
-    data_dir: Optional[str] = None,
-    workspace_id: Optional[str] = None,
+    data_dir: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Get statistics about the current state of the knowledge graph.
 
@@ -234,8 +230,8 @@ def mind_map_stats(
 
 @mcp.tool()
 def mind_map_report(
-    data_dir: Optional[str] = None,
-    workspace_id: Optional[str] = None,
+    data_dir: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Generate a JSON report of the knowledge graph with summary stats and top nodes.
 
@@ -264,8 +260,8 @@ def mind_map_report(
 @mcp.tool()
 def mind_map_prune(
     percent: float = 0.1,
-    data_dir: Optional[str] = None,
-    workspace_id: Optional[str] = None,
+    data_dir: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Prune the least important nodes from the knowledge graph.
 
@@ -299,8 +295,8 @@ def mind_map_prune(
 
 @mcp.tool()
 def mind_map_health(
-    data_dir: Optional[str] = None,
-    workspace_id: Optional[str] = None,
+    data_dir: str | None = None,
+    workspace_id: str | None = None,
 ) -> str:
     """Run a comprehensive health check on the Mind Map system.
 

@@ -8,23 +8,20 @@ Goal: one source of truth so CLI and MCP cannot drift.
 """
 from __future__ import annotations
 
-import json
 import math
 import os
-import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from mind_map.app.pipeline import ingest_memo_cli, ingest_memo_internal
+from mind_map.app.pipeline import ingest_memo_internal
 from mind_map.core.config import DEFAULT_DATA_DIR
 from mind_map.core.schemas import Edge, NodeType
 from mind_map.processor.cli_executor import (
-    CLIExecutionError,
     LocalTarget,
     MemoTarget,
     MiniMaxTarget,
-    resolve_local_model,
 )
 from mind_map.rag.graph_store import GraphStore
 
@@ -94,8 +91,6 @@ def parse_memo_target(*, local: str | None, api_key: str | None) -> MemoTarget:
         from mind_map.processor.cli_executor import (
             get_local_api_key,
             get_local_base_url,
-        )
-        from mind_map.processor.cli_executor import (
             resolve_local_model as _resolve_local_model,
         )
 
@@ -190,8 +185,6 @@ def memo_ingest(
         from mind_map.processor.cli_executor import (
             get_local_api_key,
             get_local_base_url,
-        )
-        from mind_map.processor.cli_executor import (
             resolve_local_model as _resolve_local_model,
         )
 

@@ -4,13 +4,12 @@ import os
 from pathlib import Path
 from typing import Annotated
 
-from mind_map.core.config import get_data_dir
-from mind_map.core.schemas import Edge, GraphNode
-
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+
+from mind_map.core.config import get_data_dir
 
 app = typer.Typer(
     name="mind-map",
@@ -481,7 +480,7 @@ def retrieve(
 
     if not data_dir.exists():
         # Print to stdout (no Rich) so callers can parse output cleanly
-        print(f"No relevant information found in the knowledge graph.")
+        print("No relevant information found in the knowledge graph.")
         raise typer.Exit(0)
 
     store = GraphStore(data_dir)
@@ -560,10 +559,10 @@ def ask(
         # success and qa_node_ids and nodes
         console.print(f"[dim]Stored: 1 Q&A node (linked to {len(nodes)} context nodes)[/dim]")
     elif qa_node_ids:
-        console.print(f"[dim]Stored: 1 Q&A node[/dim]")
+        console.print("[dim]Stored: 1 Q&A node[/dim]")
     elif status == "answered":
         # ingestion was attempted but returned no new nodes
-        console.print(f"[dim]Ingestion skipped (no new nodes)[/dim]")
+        console.print("[dim]Ingestion skipped (no new nodes)[/dim]")
 
 
 @app.command()
@@ -641,7 +640,6 @@ def serve(
     port: Annotated[int, typer.Option("--port", "-p", help="Port to bind to")] = 8000,
 ) -> None:
     """Start the FastAPI server for frontend integration."""
-    import os
     import uvicorn
 
     # Resolve data dir and propagate via env var so routes.py picks it up

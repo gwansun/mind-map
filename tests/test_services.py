@@ -7,7 +7,6 @@ is enforced regardless of which surface a caller uses.
 """
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from pathlib import Path
@@ -19,7 +18,6 @@ from mind_map.app import services
 from mind_map.core.schemas import Edge, NodeType
 from mind_map.processor.cli_executor import LocalTarget, MiniMaxTarget
 from mind_map.rag.graph_store import GraphStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -394,7 +394,7 @@ class GraphStore:
         if not result["ids"]:
             return
 
-        for node_id, metadata in zip(result["ids"], result["metadatas"]):
+        for node_id, metadata in zip(result["ids"], result["metadatas"], strict=False):
             if metadata is None:
                 continue
             metadata["importance_score"] = self.calculate_importance(node_id)

@@ -5,8 +5,6 @@ When a target is set, that exact model path is used; on failure the memo is reje
 """
 from __future__ import annotations
 
-from typing import Any
-
 from mind_map.core.schemas import FilterDecision, GraphNode
 from mind_map.processor.cli_executor import MemoTarget, build_cli_template
 
@@ -48,7 +46,7 @@ def _run_custom_filter(
 
     Raises CLIExecutionError on failure (caller should reject the memo).
     """
-    from mind_map.processor.cli_executor import run_filter_cli, CLIExecutionError
+    from mind_map.processor.cli_executor import CLIExecutionError, run_filter_cli
 
     prompt = FILTER_MINIMAX_PROMPT_TEMPLATE.format(
         text=text,

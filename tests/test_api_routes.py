@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from mind_map.core.schemas import Edge, NodeType
 from mind_map.app.pipeline import ingest_memo_internal
+from mind_map.core.schemas import Edge, NodeType
 from mind_map.rag.graph_store import GraphStore
 
 

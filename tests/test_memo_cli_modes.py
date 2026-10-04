@@ -10,7 +10,6 @@ from typer.testing import CliRunner
 from mind_map.app.cli.main import app
 from mind_map.rag.graph_store import GraphStore
 
-
 runner = CliRunner()
 
 

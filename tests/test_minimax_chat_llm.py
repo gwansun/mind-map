@@ -7,8 +7,6 @@ These tests define the expected contract for the MiniMaxChatLLM class
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestMiniMaxChatLLMExists:
     """Test that MiniMaxChatLLM can be imported and instantiated."""
@@ -57,8 +55,9 @@ class TestMiniMaxChatLLMMessages:
 
     def test_messages_converted_to_openai_format(self):
         """When _generate is called, messages should be sent in OpenAI chat format."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+
         from mind_map.rag.reasoning_llm import MiniMaxChatLLM
-        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
         llm = MiniMaxChatLLM(api_key="sk-test-123")
 
@@ -96,8 +95,9 @@ class TestMiniMaxChatLLMThinkTags:
 
     def test_strips_think_tags(self):
         """Response containing <think>reasoning...</think> should have tags stripped, leaving JSON only."""
-        from mind_map.rag.reasoning_llm import MiniMaxChatLLM
         from langchain_core.messages import HumanMessage
+
+        from mind_map.rag.reasoning_llm import MiniMaxChatLLM
 
         llm = MiniMaxChatLLM(api_key="sk-test-123")
         messages = [HumanMessage(content="Extract the JSON")]

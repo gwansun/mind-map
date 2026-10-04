@@ -9,7 +9,6 @@ from mind_map.app.cli.main import app
 from mind_map.core.schemas import Edge, NodeType
 from mind_map.rag.graph_store import GraphStore
 
-
 runner = CliRunner()
 
 

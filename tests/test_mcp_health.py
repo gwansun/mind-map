@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from mind_map.core.schemas import Edge, NodeType
-from mind_map.mcp.server import get_store, mind_map_health as _health_tool, stores
+from mind_map.mcp.server import mind_map_health as _health_tool, stores
 from mind_map.rag.graph_store import GraphStore
 
 # @mcp.tool() wraps functions into FunctionTool objects; access the raw callable via .fn
