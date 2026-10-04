@@ -159,21 +159,14 @@ The separate **internal (non-CLI)** path — `POST /memo`, `POST /ask`, and the 
 
 #### Prompting change summary
 
-The extraction prompts were tightened to improve reliability:
+The extraction prompt is a single short strict-format prompt:
 
-- changed from a long explanatory prompt to a shorter strict format
-- base prompt now explicitly says:
-  - respond with **only raw JSON**
-  - no prose
-  - no markdown
-  - no explanation
-  - no greeting
-- retrieval-context prompt now says `EXTRACT JSON` and focuses on:
-  - required keys
-  - existing node IDs allowed for linking
+- it says `EXTRACT JSON` and requires raw JSON only — no text before or after
+- it names the required keys (`summary`, `tags`, `entities`, `relationships`)
+- the same prompt serves both paths: the memo target (`extract_with_references`) and the LLM-backed internal path (`extract_with_llm`)
 - retrieval context is compacted:
-  - up to 10 nodes
-  - each snippet trimmed to 150 chars
+  - up to 15 reference nodes
+  - each snippet trimmed to 120 chars
   - empty retrieval marker is `(none)`
 
 This was done because the MiniMax path was more reliable with a shorter, stricter structured-output contract.
