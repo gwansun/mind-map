@@ -155,6 +155,8 @@ If the resolved target fails, the memo is rejected.
 
 The separate **internal (non-CLI)** path — `POST /memo`, `POST /ask`, and the `ask` back-feed — summarises through the configured processing LLM (`processing_llm.provider`, currently `commandcode`) and falls back to heuristic extraction (logged) when that call fails or returns non-JSON. Callers that supply no LLM, such as the health checks, use heuristic extraction only and make no LLM calls.
 
+**Paid calls per memo.** The memo pipeline runs both its filter and its extractor against the resolved target: **0 calls** when the heuristic filter discards short (< 10 chars) or trivial text before the target is touched; **1 call** when the filter returns `duplicate` or `discard` (nothing stored, extraction never reached — an exact-normalized duplicate still pays this call); **2 calls** when it returns `new` (filter + extraction). A failed target call still costs the attempt and rejects the memo.
+
 #### Prompting change summary
 
 The extraction prompts were tightened to improve reliability:

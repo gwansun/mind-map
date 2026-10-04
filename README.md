@@ -81,6 +81,15 @@ Memo ingestion requires an explicit model target. Resolution order:
    - **MiniMax fallback**: `MINIMAX_API_KEY` + `MiniMaxTarget` (`api.minimax.io`, model `MiniMax-M2.5`) — legacy path, kept working
 The memo CLI/MCP path has no model fallback: if the resolved target fails, the memo is rejected.
 
+**Paid calls per memo.** Both the filter and the extractor in this pipeline run against the resolved target, so one memo costs **0, 1, or 2** calls:
+
+- **0 calls** — the text is shorter than 10 characters, or is a trivial greeting (`hello`, `thanks`, `ok`, …): the heuristic filter discards it before the target is touched.
+- **1 call** — the filter runs and returns `duplicate` or `discard`: nothing is stored and extraction is never reached. An exact-normalized duplicate still pays this call, because only the trivial/short cases short-circuit ahead of the target.
+- **2 calls** — the filter returns `new`, so extraction runs and its summary, tags and entities are stored.
+- A target failure still spends the attempt and rejects the memo (`Memo rejected: …`) — there is no silent free path.
+
+The internal (non-CLI) path below makes at most **one** call, and none at all when no LLM is supplied.
+
 ### Internal (Non-CLI) Ingestion Chain
 
 The HTTP routes (`POST /memo`, `POST /ask`) and the `ask` back-feed do not use a memo target. They summarise through the **configured processing LLM** (`processing_llm.provider` in `config.yaml`, currently `commandcode`) and write through the same storage steps. If the LLM call fails or returns unparsable JSON, extraction degrades to the heuristic extractor and logs a warning — a gateway error cannot lose a memo on these non-interactive paths. Callers that pass no LLM (the health checks) stay heuristic and make no LLM calls.
