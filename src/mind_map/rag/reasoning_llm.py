@@ -17,7 +17,9 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 from rich.console import Console
 
-console = Console()
+# stderr: the "Using DeepSeek API" banner used to land on the MCP server's stdout,
+# which for stdio transport is the JSON-RPC stream.
+console = Console(stderr=True)
 
 
 def _find_claude_cli() -> str | None:

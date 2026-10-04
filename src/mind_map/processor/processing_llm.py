@@ -18,7 +18,8 @@ from rich.table import Table
 
 from mind_map.core.config import CONFIG_PATH
 
-console = Console()
+# stderr: this module is imported by the MCP server, whose stdout carries JSON-RPC.
+console = Console(stderr=True)
 
 # Default model for processing (filtering, extraction)
 DEFAULT_PROCESSING_MODEL = "phi3.5"

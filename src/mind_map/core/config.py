@@ -20,7 +20,9 @@ ENV_PATH = PROJECT_ROOT / ".env"
 
 load_dotenv(ENV_PATH)
 
-console = Console()
+# Diagnostics belong on stderr: the MCP server's stdout is the JSON-RPC channel,
+# so anything printed there corrupts the protocol.
+console = Console(stderr=True)
 
 
 def load_config() -> dict[str, Any]:
